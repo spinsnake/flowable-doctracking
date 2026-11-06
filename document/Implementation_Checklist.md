@@ -50,7 +50,7 @@
 - [ ] **P0-06** ยืนยัน TTL reservation, bulk all-or-nothing/partial-success, direct-transfer photo และ exception recovery โดยไม่ใช้ข้อเสนอเริ่มต้นแทนการอนุมัติ
 - [ ] **P0-07** ยืนยัน business duplicate rule ของเลขหนังสือ, UUID ภายใน, retention, SLA และ backup RPO/RTO
 - [ ] **P0-08** เตรียม Google Web OAuth client, MFU hosted-domain policy, HTTPS callback URI และอีเมล bootstrap Admin ที่อนุมัติ โดยเก็บ secret นอก repo — มี [config template](../deploy/.env.example); ยังรอ client/URL/บัญชีจริงตาม [Execution Report](p0/Execution_Report.md)
-- [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging — มี template/handoff; ยังไม่ยืนยันบริการสำหรับแอปนี้และยังไม่ส่งอีเมลจริง
+- [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging — มี template/handoff และ loopback SMTP test ผ่านแล้ว; ยังไม่ยืนยัน relay จริงหรือทดสอบรับอีเมลถึง MFU inbox
 - [x] **P0-10** ทำ compatibility spike ของ Java/Spring Boot/Flowable/PostgreSQL: start engine, deploy BPMN, complete task, timer และ transaction rollback แล้วตรึงเวอร์ชันที่ทดสอบจริง — [spike/result](../spikes/flowable-compatibility/README.md): Java 21.0.13, Boot 4.0.9, Flowable 8.0.0, PostgreSQL 17.11; 3 tests ผ่าน 2026-11-06, timer execute แบบ deterministic
 - [x] **P0-11** กำหนด transaction boundaries สำหรับ business event/outbox, workflow worker/inbox และ login session/audit/email outbox ให้ชัดก่อน implementation — [Design Baseline §5](p0/Design_Baseline.md); shared JDBC/engine rollback ผ่าน spike และ login atomicity/rollback ผ่าน P1-15/T39 แล้วตาม [P1 Report](p1/Execution_Report.md); business workflow synchronization/shared transaction ผ่าน P2 แล้วตาม [P2 Report](p2/Execution_Report.md)
 - [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): P0 baseline 28 paths / 33 operations; P1 validation ผ่าน 35 paths / 42 operations; ล่าสุดหลัง P2 ผ่าน 37 paths / 44 operations โดย direct/observation/default-policy/bulk ของ P4/P5 ยังไม่ถือว่า implement แล้ว
@@ -124,22 +124,34 @@
 
 ### งานที่ต้องทำ
 
-- [x] **P2-01** สร้าง deployable BPMN `document_tracking_v1.bpmn20.xml` จริง พร้อม branch Model A และ B ตั้งแต่ต้น
-- [x] **P2-02** ใช้หนึ่ง instance ต่อ document และ route iterator; เก็บ process definition/version/instance mapping โดยมีกลไกกัน start ซ้ำใน App DB
-- [x] **P2-03** ทำ task/gateway สำหรับ origin ready, courier pickup/drop-off, unit receipt/processing/ready และ origin return receipt ตาม transition matrix
-- [x] **P2-04** ทำ Model A physical-pickup/unconfirmed-drop-off/final tracking-complete โดยไม่สร้าง UNIT_READY หรือ UNIT_RECEIPT สมมติ
-- [x] **P2-05** ทำ backend orchestration ผ่าน Flowable Java API; frontend ไม่ complete Flowable task โดยตรง และ engine variables เก็บเฉพาะข้อมูลจำเป็น ไม่เก็บ binary รูป
-- [x] **P2-06** ทำ outbox worker เรียง event ต่อ document และตรวจ document + route step + action + task ที่คาดไว้ก่อน apply
-- [x] **P2-07** ทำ consumed-event/inbox + engine start/complete + ACK/sync projection ใน shared transaction; พิสูจน์ engine rollback ทำให้ consumed marker rollback ด้วย
-- [x] **P2-08** ทำ retry/backoff/dead-letter และบล็อกคำสั่ง workflow ถัดไปของเรื่องที่ sync pending ตาม policy; API แสดง business state แยก sync status
-- [x] **P2-09** ทดสอบ restart หลัง business commit, rollback ระหว่าง engine apply, replay หลัง engine commit, duplicate/out-of-order/stale-step event และไม่ advance/start ซ้ำ
-- [x] **P2-10** ทำ headless A/B tests ครบ A→B→C→A พร้อม repeated-station steps, timer ที่แจ้งเตือนไม่ auto-accept และ process version behavior
+- [x] **P2-01** สร้าง deployable BPMN `document_tracking_v1.bpmn20.xml` จริง พร้อม branch Model A และ B ตั้งแต่ต้น — [BPMN XML](../backend/src/main/resources/processes/document_tracking_v1.bpmn20.xml)
+- [x] **P2-02** ใช้หนึ่ง instance ต่อ document และ route iterator; เก็บ process definition/version/instance mapping โดยมีกลไกกัน start ซ้ำใน App DB — [Engine](../backend/src/main/java/th/ac/mfu/doctracking/workflow/TrackingWorkflowEngine.java) และ [concurrent/replay tests](../backend/src/test/java/th/ac/mfu/doctracking/WorkflowOutboxIntegrationTest.java)
+- [x] **P2-03** ทำ task/gateway สำหรับ origin ready, courier pickup/drop-off, unit receipt/processing/ready และ origin return receipt ตาม transition matrix — [Business commands](../backend/src/main/java/th/ac/mfu/doctracking/domain/WorkflowCommandService.java) และ [A/B flow tests](../backend/src/test/java/th/ac/mfu/doctracking/WorkflowCommandsIntegrationTest.java)
+- [x] **P2-04** ทำ Model A physical-pickup/unconfirmed-drop-off/final tracking-complete โดยไม่สร้าง UNIT_READY หรือ UNIT_RECEIPT สมมติ — [Model A engine/business tests](p2/Execution_Report.md)
+- [x] **P2-05** ทำ backend orchestration ผ่าน Flowable Java API; frontend ไม่ complete Flowable task โดยตรง และ engine variables เก็บเฉพาะข้อมูลจำเป็น ไม่เก็บ binary รูป — [Engine service](../backend/src/main/java/th/ac/mfu/doctracking/workflow/TrackingWorkflowEngine.java)
+- [x] **P2-06** ทำ outbox worker เรียง event ต่อ document และตรวจ document + route step + action + task ที่คาดไว้ก่อน apply — [Worker](../backend/src/main/java/th/ac/mfu/doctracking/workflow/WorkflowOutboxWorker.java); delayed predecessor และสอง worker แข่งกันผ่าน tests
+- [x] **P2-07** ทำ consumed-event/inbox + engine start/complete + ACK/sync projection ใน shared transaction; พิสูจน์ engine rollback ทำให้ consumed marker rollback ด้วย — [Rollback tests](../backend/src/test/java/th/ac/mfu/doctracking/WorkflowOutboxIntegrationTest.java) ตรวจหลัง start และหลัง complete พร้อม datasource/transaction manager identity
+- [x] **P2-08** ทำ retry/backoff/dead-letter และบล็อกคำสั่ง workflow ถัดไปของเรื่องที่ sync pending ตาม policy; API แสดง business state แยก sync status — [Recovery API](../backend/src/main/java/th/ac/mfu/doctracking/workflow/WorkflowRecoveryController.java), [OpenAPI](../contracts/openapi.yaml); retry operation เดิมพร้อม version/reason/audit
+- [x] **P2-09** ทดสอบ restart หลัง business commit, rollback ระหว่าง engine apply, replay หลัง engine commit, duplicate/out-of-order/stale-step event และไม่ advance/start ซ้ำ — [Native JVM probe](../backend/src/test/java/th/ac/mfu/doctracking/WorkflowRestartProbe.java) และ [ผล recovery](p2/Test_Results.json)
+- [x] **P2-10** ทำ headless A/B tests ครบ A→B→C→A พร้อม repeated-station steps, timer ที่แจ้งเตือนไม่ auto-accept และ process version behavior — [Engine integration tests](../backend/src/test/java/th/ac/mfu/doctracking/TrackingWorkflowEngineIntegrationTest.java); timer บันทึก durable reminder feed ยังไม่ส่ง workflow email
 
 ### Exit Gate P2
 
 - [x] **G2** BPMN A/B execute ได้จริง; T20/T25/T26 และ transaction/failure tests ผ่าน ไม่มี ACK ที่สำเร็จแต่ task rollback หรือ event เดิมขยับขั้นตอนซ้ำ — ผ่าน PostgreSQL integration tests, concurrent workers และ native JVM restart ตาม [P2 Report](p2/Execution_Report.md); ไม่ใช่ UI/UAT/staging sign-off
 
+### งานที่ส่งต่อหลัง P2
+
+| สิ่งที่พร้อมแล้ว | งานที่ยังต้องทำ / Phase |
+|---|---|
+| Single-document READY/pickup/drop-off/receipt/return APIs และ A/B headless flow | ต่อปุ่ม ฟอร์ม worklists และ end-to-end ผ่าน UI ใน P3/P4 |
+| Photo validation, reservation ownership และ custody guards | ทดสอบ camera/upload บนมือถือ และหลาย Courier คนละ leg ใน P3-08–09/P8-06 |
+| Durable timer reminder feed และ technical recovery API | ส่ง reminder/escalation และทำ operations dashboard ใน P6; ยืนยัน SLA/timer policy ใน P0-07 |
+| JVM recovery, event replay และ definition version pinning | ตรวจ DB restart/host failure, deploy/rollback และ backup/restore ใน P6/P8 |
+| Compose config และ CI workflow | Build/start containers, remote CI และ Google/SMTP/S3/HTTPS staging จริงยังรอตรวจตามรายการส่งต่อ P1 และ P8 |
+
 ## P3 — Model B ครบเส้นทางผ่าน UI
+
+สถานะ: ยังไม่ปิดรายการ P3 แม้มีหน้าทะเบียน/รูปจาก P1 และ business APIs จาก P2 แล้ว ต้องเชื่อม UI กับ workflow จริงและมีหลักฐาน end-to-end ตามแต่ละรายการก่อนติ๊กเสร็จ
 
 ### งานที่ต้องทำ
 
