@@ -102,11 +102,22 @@ public class RegistryService {
         var rows=s.db.queryForList("select d.* from documents d join route_steps r on r.id=d.current_route_step_id where r.station_id=? and d.process_sync_status='APPLIED' and d.active_leg_id is null and d.active_reservation_id is null and ((d.tracking_mode='MODEL_B' and d.business_state='READY_FOR_PICKUP') or (d.tracking_mode='MODEL_A' and d.business_state in ('AWAIT_PHYSICAL_PICKUP','DROPPED_OFF_UNCONFIRMED'))) and exists(select 1 from route_steps n where n.document_id=d.id and n.sequence=r.sequence+1) and (?::uuid is null or d.id>?::uuid) order by d.id limit ?",station,cursor,cursor,limit+1);
         return page(rows,limit,r->s.view(r,true));
     }
+    @SuppressWarnings("unchecked")
     public Map<String,Object> operation(Actor actor,UUID id) {
         var row=s.one("select * from tracking_operations where id=?",id);
         var document=s.document(TrackingStore.id(row,"document_id"),false);
         if(!actor.id().equals(row.get("actor_id"))) s.visible(actor,document);
-        var result=s.decode(row.get("result").toString());result.put("process_sync_status",document.get("process_sync_status"));return result;
+        var result=s.decode(row.get("result").toString());
+        var deliveries=s.db.queryForList("select o.status,o.attempts,o.available_at as next_retry_at,o.last_error_code,o.version from workflow_outbox o join document_events e on e.id=o.event_id where e.operation_id=?",id);
+        String sync=document.get("process_sync_status").toString();
+        if(!deliveries.isEmpty()) {
+            var delivery=deliveries.getFirst();
+            sync=switch(delivery.get("status").toString()) {case "APPLIED"->"APPLIED";case "RETRY_WAIT","DEAD_LETTER"->"FAILED_RETRYABLE";default->"PENDING";};
+            result.put("workflow_sync",delivery);
+        }
+        result.put("process_sync_status",sync);
+        for(var state:(List<Map<String,Object>>)result.getOrDefault("updated_states",List.of())) state.put("process_sync_status",sync);
+        return result;
     }
     public CommandResult attachEvidence(Actor actor,UUID document,EvidenceAttachment input) {
         var doc=s.document(document,true);s.visible(actor,doc);

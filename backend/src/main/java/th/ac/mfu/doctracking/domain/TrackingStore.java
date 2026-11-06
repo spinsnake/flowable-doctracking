@@ -63,10 +63,13 @@ public class TrackingStore {
         if(expected<0 || version(row)!=expected) throw new ApiException(409,"STALE_VERSION","Resource version changed");
     }
     UUID event(UUID documentId,UUID actorId,UUID step,String type,UUID operation,Object payload,boolean workflow) {
+        return event(documentId,actorId,step,null,null,type,operation,payload,workflow);
+    }
+    UUID event(UUID documentId,UUID actorId,UUID step,UUID from,UUID to,String type,UUID operation,Object payload,boolean workflow) {
         long seq = db.queryForObject("update documents set event_sequence=event_sequence+1 where id=? returning event_sequence", Long.class, documentId);
         UUID event=UUID.randomUUID();
-        db.update("insert into document_events(id,document_id,sequence,event_type,actor_id,route_step_id,operation_id,payload) values(?,?,?,?,?,?,?,?::jsonb)",
-                event,documentId,seq,type,actorId,step,operation,encode(payload));
+        db.update("insert into document_events(id,document_id,sequence,event_type,actor_id,route_step_id,from_step_id,to_step_id,operation_id,payload) values(?,?,?,?,?,?,?,?,?,?::jsonb)",
+                event,documentId,seq,type,actorId,step,from,to,operation,encode(payload));
         if(workflow) db.update("insert into workflow_outbox(id,event_id,document_id,sequence,action,payload) values(?,?,?,?,?,?::jsonb)",
                 UUID.randomUUID(),event,documentId,seq,type,encode(payload));
         return event;

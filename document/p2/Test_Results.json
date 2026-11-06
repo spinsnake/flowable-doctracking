@@ -1,0 +1,84 @@
+{
+  "date": "2026-11-06",
+  "verification": "Maven Wrapper verify: passed",
+  "backend": [
+    {
+      "name": "th.ac.mfu.doctracking.IdentityIntegrationTest",
+      "tests": "11",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "24.163"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.OAuthHttpIntegrationTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "3.894"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.SmtpIntegrationTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "2.292"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.TrackingIntegrationTest",
+      "tests": "13",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "4.677"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.TrackingWorkflowEngineIntegrationTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "5.202"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.WorkflowCommandsIntegrationTest",
+      "tests": "6",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "4.441"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.WorkflowOutboxIntegrationTest",
+      "tests": "7",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "2.567"
+    }
+  ],
+  "total_tests": 47,
+  "openapi": {
+    "paths": 37,
+    "operations": 44,
+    "validation": "passed"
+  },
+  "compose": {
+    "base": "config validation passed",
+    "dev": "config validation passed",
+    "container_runtime": "not verified"
+  },
+  "native_jvm_recovery": {
+    "result": "passed",
+    "prior_test_jvm_exited_after_business_commit": true,
+    "first_application_jvm_health": 200,
+    "second_application_jvm_health": 200,
+    "same_process_id_after_restart": true,
+    "same_task_id_after_restart": true,
+    "inbox_count": 1,
+    "waiting_task": "ORIGIN_READY",
+    "scope": "disposable test schema; unrelated fixture deliveries postponed; no forged target ACK"
+  }
+}

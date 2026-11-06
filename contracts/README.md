@@ -1,4 +1,4 @@
-# Application API contract — P0/P1
+# Application API contract — P0/P1/P2
 
 [`openapi.yaml`](openapi.yaml) เป็น OpenAPI 3.0.3 ของ application backend ใช้ตกลง payload, security boundary และ error หลักฐาน implementation อยู่ใน [P1 report](../document/p1/Execution_Report.md) การมี endpoint ใน contract ไม่ถือว่า endpoint นั้นพัฒนาแล้ว
 
@@ -15,6 +15,10 @@
 
 P1 เพิ่ม contract ของ station directory/create, explicit user grants, template revision, own-reservation list และ evidence create/raw PUT/finalize/authorized download/attach-to-document พร้อม implementation ของ auth/provisioning/registry/single reservation/notification retry/operation polling
 
-Ready/check/receipt/return, direct transfer, observation, default-policy API และ bulk ยังเป็น P2–P5 ไม่ใช่ API ที่เปิดใช้งานแล้ว เอกสารใหม่สร้าง workflow outbox PENDING และยังไม่ advance จนมี P2 worker การจองใน P1 tests ใช้ ready/APPLIED fixture เฉพาะ test source
+P2 เพิ่ม single-document ready/check-receive/check-dropoff/confirm-receipt/confirm-return พร้อม BPMN A/B และ outbox/inbox worker จริง คำสั่งตอบ 202 แล้ว poll operation จน APPLIED; ระหว่าง pending/failed ห้ามเดินขั้นถัดไป การจอง/ยกเลิก/หมดอายุการจองยังไม่ complete engine task ดู [P2 report](../document/p2/Execution_Report.md)
+
+`GET /admin/workflow-operations/{operation_id}` ให้ Central Admin ดูเฉพาะ technical status/version และ `POST .../retry` requeue delivery เดิมพร้อม CSRF/idempotency/version/reason/audit ไม่สร้าง business event ใหม่ Operation polling รายงาน sync ของ operation นั้น ไม่ใช้สถานะของคำสั่งถัดไปทับคำสั่งที่ apply แล้ว
+
+UI ของ business workflow เป็น P3/P4 ส่วน direct transfer, observation, default-policy API และ bulk ยังเป็น P4/P5 ยังไม่เปิดใช้งาน P2 รับหนึ่ง item ต่อคำสั่ง batch-shaped payload; P1 tests เดิมที่ seed ready/APPLIED เป็น fixtures แยกจาก P2 tests ที่ execute Flowable จริง
 
 UI ไม่แก้ tracking mode ของเรื่องเดิม การใช้รูปในคำสั่งต้องผ่าน finalize และสิทธิ์ owner/context ก่อน; เก็บรูปแบบ private โดยดาวน์โหลดผ่าน backend ที่ตรวจสิทธิ์ทุกครั้ง

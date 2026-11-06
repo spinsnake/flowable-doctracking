@@ -1,10 +1,14 @@
-# MFU Document Tracking — P1
+# MFU Document Tracking — P1/P2
 
 Spring Boot 4.0.9 / Java 21 / Flowable 8.0.0 / PostgreSQL 17.11 backend และ Nuxt 4 / TypeScript frontend
 
 P1 มี Google OIDC + MFU allowlist, Central/Unit administration, login notification outbox, route templates, document snapshots, private evidence และ single reservation ดูขอบเขต/หลักฐานใน [P1 report](document/p1/Execution_Report.md) และ [checklist](document/Implementation_Checklist.md)
 
-ยังไม่ deploy BPMN หรือ consume workflow outbox: เอกสารใหม่แสดง `PENDING` จนทำ P2 จึงยังไม่สามารถเดิน workflow หรือจองเอกสารที่เพิ่งสร้างผ่าน UI ได้
+P2 เพิ่ม BPMN A/B ที่ execute ได้, outbox/inbox worker และ single-document workflow APIs เอกสารใหม่แสดง `PENDING` ระหว่าง sync แล้วเป็น `APPLIED` เมื่อ task พร้อม รายละเอียดอยู่ใน [P2 report](document/p2/Execution_Report.md) UI สำหรับ READY/pickup/drop-off/receipt/return ยังเป็น P3/P4; P2 ทดสอบ flow ผ่าน backend แบบ headless
+
+Worker ตรวจ exact document/step/task/leg และ commit engine + inbox + ACK ใน transaction เดียวกัน ความล้มเหลวใช้ retry/backoff และ dead letter โดยบล็อกคำสั่งขั้นต่อไป มี Admin retry operation เดิมพร้อม audit ผ่าน `/api/v1/admin/workflow-operations/{operation_id}/retry` การจอง/ยกเลิก/หมดอายุการจองไม่ complete task
+
+`WORKFLOW_WORKER_ENABLED` และ `WORKFLOW_TIMER_ENABLED` เปิดเป็นค่าเริ่มต้น Timer 24 ชั่วโมงเป็น development reminder baseline ที่ยังรอ SLA policy; บันทึก reminder โดยไม่ auto-accept หรือเปลี่ยน custody ส่วนการส่งแจ้งเตือน workflow ให้ผู้ใช้เป็นงาน operations ใน P6
 
 ## Local development
 

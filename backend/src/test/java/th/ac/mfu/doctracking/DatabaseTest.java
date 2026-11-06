@@ -32,7 +32,9 @@ public abstract class DatabaseTest {
         registry.add("spring.datasource.password", () -> password);
         registry.add("flowable.database-schema-update", () -> "true");
         registry.add("flowable.database-schema", () -> SCHEMA);
+        registry.add("flowable.async-executor-activate", () -> "false");
         registry.add("app.mail-worker-enabled", () -> "false");
+        registry.add("app.workflow-worker-enabled", () -> "false");
         registry.add("app.session-secure", () -> "false");
         registry.add("app.evidence.root", () -> ".local/test-evidence");
     }

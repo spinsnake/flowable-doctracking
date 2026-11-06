@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn" targetNamespace="https://mfu.ac.th/doctracking">
+  <process id="document_tracking_v1" name="Document tracking A/B v1" isExecutable="true">
+    <startEvent id="START"/>
+    <sequenceFlow id="start_mode" sourceRef="START" targetRef="MODE"/>
+    <exclusiveGateway id="MODE" default="start_a"/>
+    <sequenceFlow id="start_b" sourceRef="MODE" targetRef="ORIGIN_READY">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${trackingMode == 'MODEL_B'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="start_a" sourceRef="MODE" targetRef="COURIER_PICKUP"/>
+
+    <userTask id="ORIGIN_READY" name="Origin prepares and confirms ready">
+      <extensionElements><flowable:taskListener event="create" expression="${trackingWorkflowEngine.bindTask(task)}"/></extensionElements>
+    </userTask>
+    <sequenceFlow id="origin_ready_pickup" sourceRef="ORIGIN_READY" targetRef="COURIER_PICKUP"/>
+    <userTask id="COURIER_PICKUP" name="Courier confirms physical pickup">
+      <extensionElements><flowable:taskListener event="create" expression="${trackingWorkflowEngine.bindTask(task)}"/></extensionElements>
+    </userTask>
+    <sequenceFlow id="pickup_dropoff" sourceRef="COURIER_PICKUP" targetRef="COURIER_DROPOFF"/>
+    <userTask id="COURIER_DROPOFF" name="Courier confirms drop-off">
+      <extensionElements><flowable:taskListener event="create" expression="${trackingWorkflowEngine.bindTask(task)}"/></extensionElements>
+    </userTask>
+    <sequenceFlow id="dropoff_advance" sourceRef="COURIER_DROPOFF" targetRef="ADVANCE_ROUTE"/>
+    <serviceTask id="ADVANCE_ROUTE" name="Advance exact route step" flowable:expression="${trackingWorkflowEngine.advance(execution)}"/>
+    <sequenceFlow id="advance_mode" sourceRef="ADVANCE_ROUTE" targetRef="DELIVERY_MODE"/>
+    <exclusiveGateway id="DELIVERY_MODE" default="delivery_a"/>
+    <sequenceFlow id="delivery_b" sourceRef="DELIVERY_MODE" targetRef="B_RETURN">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${trackingMode == 'MODEL_B'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="delivery_a" sourceRef="DELIVERY_MODE" targetRef="A_RETURN"/>
+
+    <exclusiveGateway id="A_RETURN" default="a_next_pickup"/>
+    <sequenceFlow id="a_next_pickup" sourceRef="A_RETURN" targetRef="COURIER_PICKUP"/>
+    <sequenceFlow id="a_final" sourceRef="A_RETURN" targetRef="COURIER_TRACKING_COMPLETE">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${stepIndex == routeStepIds.size() - 1}]]></conditionExpression>
+    </sequenceFlow>
+    <endEvent id="COURIER_TRACKING_COMPLETE" name="Courier tracking complete; no unit receipt implied"/>
+
+    <exclusiveGateway id="B_RETURN" default="b_unit_receive"/>
+    <sequenceFlow id="b_unit_receive" sourceRef="B_RETURN" targetRef="UNIT_RECEIVE"/>
+    <sequenceFlow id="b_origin_return" sourceRef="B_RETURN" targetRef="ORIGIN_RETURN_RECEIVE">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${stepIndex == routeStepIds.size() - 1}]]></conditionExpression>
+    </sequenceFlow>
+    <userTask id="UNIT_RECEIVE" name="Destination unit confirms actual receipt">
+      <extensionElements><flowable:taskListener event="create" expression="${trackingWorkflowEngine.bindTask(task)}"/></extensionElements>
+    </userTask>
+    <sequenceFlow id="receive_process" sourceRef="UNIT_RECEIVE" targetRef="UNIT_PROCESS_AND_READY"/>
+    <userTask id="UNIT_PROCESS_AND_READY" name="Unit processes and confirms ready for next pickup">
+      <extensionElements><flowable:taskListener event="create" expression="${trackingWorkflowEngine.bindTask(task)}"/></extensionElements>
+    </userTask>
+    <sequenceFlow id="process_pickup" sourceRef="UNIT_PROCESS_AND_READY" targetRef="COURIER_PICKUP"/>
+    <userTask id="ORIGIN_RETURN_RECEIVE" name="Origin confirms actual receipt at final return step">
+      <extensionElements><flowable:taskListener event="create" expression="${trackingWorkflowEngine.bindTask(task)}"/></extensionElements>
+    </userTask>
+    <sequenceFlow id="return_completed" sourceRef="ORIGIN_RETURN_RECEIVE" targetRef="COMPLETED"/>
+    <endEvent id="COMPLETED" name="Completed with origin return receipt"/>
+
+    <!-- Timers have their own end branch. They never complete or bypass a user task. -->
+    <boundaryEvent id="origin_ready_reminder" attachedToRef="ORIGIN_READY" cancelActivity="false"><timerEventDefinition><timeDuration>PT24H</timeDuration></timerEventDefinition></boundaryEvent>
+    <boundaryEvent id="pickup_reminder" attachedToRef="COURIER_PICKUP" cancelActivity="false"><timerEventDefinition><timeDuration>PT24H</timeDuration></timerEventDefinition></boundaryEvent>
+    <boundaryEvent id="dropoff_reminder" attachedToRef="COURIER_DROPOFF" cancelActivity="false"><timerEventDefinition><timeDuration>PT24H</timeDuration></timerEventDefinition></boundaryEvent>
+    <boundaryEvent id="receive_reminder" attachedToRef="UNIT_RECEIVE" cancelActivity="false"><timerEventDefinition><timeDuration>PT24H</timeDuration></timerEventDefinition></boundaryEvent>
+    <boundaryEvent id="process_reminder" attachedToRef="UNIT_PROCESS_AND_READY" cancelActivity="false"><timerEventDefinition><timeDuration>PT24H</timeDuration></timerEventDefinition></boundaryEvent>
+    <boundaryEvent id="return_reminder" attachedToRef="ORIGIN_RETURN_RECEIVE" cancelActivity="false"><timerEventDefinition><timeDuration>PT24H</timeDuration></timerEventDefinition></boundaryEvent>
+    <sequenceFlow id="remind_origin" sourceRef="origin_ready_reminder" targetRef="EMIT_REMINDER"/>
+    <sequenceFlow id="remind_pickup" sourceRef="pickup_reminder" targetRef="EMIT_REMINDER"/>
+    <sequenceFlow id="remind_dropoff" sourceRef="dropoff_reminder" targetRef="EMIT_REMINDER"/>
+    <sequenceFlow id="remind_receive" sourceRef="receive_reminder" targetRef="EMIT_REMINDER"/>
+    <sequenceFlow id="remind_process" sourceRef="process_reminder" targetRef="EMIT_REMINDER"/>
+    <sequenceFlow id="remind_return" sourceRef="return_reminder" targetRef="EMIT_REMINDER"/>
+    <serviceTask id="EMIT_REMINDER" name="Emit reminder only" flowable:expression="${trackingWorkflowEngine.remind(execution)}"/>
+    <sequenceFlow id="reminder_end" sourceRef="EMIT_REMINDER" targetRef="REMINDER_SENT"/>
+    <endEvent id="REMINDER_SENT"/>
+  </process>
+</definitions>

@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: MFU Document Tracking Application API
-  version: 0.2.0-p1
+  version: 0.3.0-p2
   description: |
-    Application contract with P1 identity, registry, evidence and single-reservation endpoints.
-    Ready/check/receipt/direct/observation/default-policy operations remain future P2-P5 scope; their presence
+    Application contract with P1 identity/registry and P2 single-document workflow endpoints.
+    Bulk/direct/observation/default-policy operations remain future P3-P5 scope; their presence
     in this specification is not implementation evidence. See contracts/README.md for the P1 boundary.
     Flowable is embedded and accessed internally through Java APIs; no engine REST endpoint is exposed here.
     Business decisions D01-D17 remain subject to the decision log and owner approval. Reservation TTL,
@@ -940,9 +940,59 @@ paths:
       tags: [Operations]
       operationId: getOperation
       summary: Poll command outcome and workflow sync under original resource scope
+      description: Workflow sync is read for this operation, including nested updated_states; workflow_sync includes persisted delivery status/attempts/retry metadata. Business-state/version snapshots remain the original command outcome.
       responses:
         '200': {$ref: '#/components/responses/CommandApplied'}
         '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /admin/workflow-operations/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Operations]
+      operationId: getWorkflowDelivery
+      summary: Central Admin reads technical delivery status for an original operation ID
+      description: Returns only operation_id/status/attempts/next_retry_at/last_error_code/version; no document titles, photos, token or provider exception data.
+      responses:
+        '200':
+          description: Persisted technical delivery status.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkflowDelivery'}
+        default: {$ref: '#/components/responses/Error'}
+  /admin/workflow-operations/{id}/retry:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      tags: [Operations]
+      operationId: retryWorkflowDelivery
+      summary: Central Admin retries the existing failed delivery with an audited reason
+      description: Does not create a new business event or replace the original operation. expected_version is the workflow delivery version from the technical status endpoint. Requires RETRY_WAIT or DEAD_LETTER; immutable invalid events remain rejected on retry.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version, reason]
+              properties:
+                expected_version: {type: integer, format: int64, minimum: 0}
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '202':
+          description: Original delivery requeued; poll the original operation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [operation_id, process_sync_status]
+                properties:
+                  operation_id: {type: string, format: uuid}
+                  process_sync_status: {type: string, enum: [PENDING]}
         default: {$ref: '#/components/responses/Error'}
   /admin/workflow-policy:
     get:
@@ -1319,6 +1369,16 @@ components:
         version: {type: integer, format: int64, minimum: 0}
         operation_id: {type: string, format: uuid}
         correlation_id: {type: string}
+    WorkflowDelivery:
+      type: object
+      required: [status, attempts, next_retry_at, version]
+      properties:
+        operation_id: {type: string, format: uuid}
+        status: {type: string, enum: [PENDING, RETRY_WAIT, APPLIED, DEAD_LETTER]}
+        attempts: {type: integer, minimum: 0}
+        next_retry_at: {type: string, format: date-time}
+        last_error_code: {type: string, nullable: true}
+        version: {type: integer, format: int64, minimum: 0}
     CommandResult:
       type: object
       required: [operation_id, document_ids, accepted, rejected, event_ids, updated_states, process_sync_status, correlation_id]
@@ -1340,6 +1400,7 @@ components:
               process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
         process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
         correlation_id: {type: string}
+        workflow_sync: {$ref: '#/components/schemas/WorkflowDelivery'}
     ItemError:
       type: object
       required: [document_id, code, message]

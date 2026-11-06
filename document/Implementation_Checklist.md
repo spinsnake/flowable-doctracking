@@ -2,7 +2,7 @@
 
 วันที่: 2026-11-06 (Asia/Bangkok)
 
-สถานะ: P1-01–25 และ G1 ผ่านในขอบเขต development/isolated integration tests แล้ว ดู [P1 Execution Report](p1/Execution_Report.md) — G0 ยังไม่ปิด เพราะ business/infra ที่รอยืนยันไม่ถือว่าได้รับอนุมัติจากการ implement; Google/SMTP/S3/HTTPS staging จริงยังเป็น P8
+สถานะ: P1-01–25/G1 และ P2-01–10/G2 ผ่านในขอบเขต development/isolated integration tests แล้ว ดู [P2 Execution Report](p2/Execution_Report.md) — backend รวม 47 tests ผ่านพร้อม native JVM recovery; G0 ยังรอยืนยัน business/infra และ staging จริงยังเป็น P8
 
 ## วิธีใช้และเอกสารอ้างอิง
 
@@ -22,17 +22,19 @@
 
 ## ภาพรวม phase
 
-| Phase | ผลลัพธ์หลัก | ต้องมีฐานจาก |
-|---|---|---|
-| P0 | กฎธุรกิจ, API/สิทธิ์, compatibility และ infra decisions | เอกสารข้อกำหนด |
-| P1 | Foundation, Google login, Central User/Unit, login email, registry/evidence/reservation | P0 สำหรับส่วนที่เกี่ยวข้อง |
-| P2 | BPMN A/B ที่ execute ได้ และ workflow outbox/inbox ที่กู้คืนได้ | P1 data/transaction/authorization |
-| P3 | Model B ครบ A → B → C → A ผ่าน UI จริง | P1–P2 |
-| P4 | Model A และ switch default A/B โดยไม่กระทบเรื่องเดิม | P2–P3 |
-| P5 | Bulk, direct transfer และ exception resolution | P3–P4 และ policy ที่ยืนยันแล้ว |
-| P6 | Operations, reconciliation, deploy/rollback, backup/restore | Workflow และ integration ที่เกี่ยวข้อง |
-| P7 | Security testing, แก้ช่องโหว่และทดสอบซ้ำ | P0–P6 และ staging ที่ทดสอบได้ |
-| P8 | Staging verification, UAT และ Pilot | P0–P7 ผ่านตาม scope |
+| Phase | ผลลัพธ์หลัก | ต้องมีฐานจาก | งานเสร็จ / สถานะ Gate |
+|---|---|---|---|
+| P0 | กฎธุรกิจ, API/สิทธิ์, compatibility และ infra decisions | เอกสารข้อกำหนด | 8/14 · G0 รอยืนยัน business/infra |
+| P1 | Foundation, Google login, Central User/Unit, login email, registry/evidence/reservation | P0 สำหรับส่วนที่เกี่ยวข้อง | 25/25 · G1 ผ่านเฉพาะ development |
+| P2 | BPMN A/B ที่ execute ได้ และ workflow outbox/inbox ที่กู้คืนได้ | P1 data/transaction/authorization | 10/10 · G2 ผ่านเฉพาะ backend/headless development |
+| P3 | Model B ครบ A → B → C → A ผ่าน UI จริง | P1–P2 | 0/10 · ยังไม่เริ่ม |
+| P4 | Model A และ switch default A/B โดยไม่กระทบเรื่องเดิม | P2–P3 | 0/9 · ยังไม่เริ่ม |
+| P5 | Bulk, direct transfer และ exception resolution | P3–P4 และ policy ที่ยืนยันแล้ว | 0/11 · ยังไม่เริ่ม |
+| P6 | Operations, reconciliation, deploy/rollback, backup/restore | Workflow และ integration ที่เกี่ยวข้อง | 0/12 · ยังไม่เริ่ม |
+| P7 | Security testing, แก้ช่องโหว่และทดสอบซ้ำ | P0–P6 และ staging ที่ทดสอบได้ | 0/18 · ยังไม่เริ่ม |
+| P8 | Staging verification, UAT และ Pilot | P0–P7 ผ่านตาม scope | 0/10 · ยังไม่เริ่ม |
+
+จำนวนงานไม่นับ Exit Gate และไม่รวมผล compatibility spike ไว้เป็นงาน P2 ที่เสร็จแล้ว งานพัฒนาถัดไปคือ **P3 — Model B ผ่าน UI จริง**; ปัจจุบัน worker เปลี่ยน `process_sync_status` จาก PENDING เป็น APPLIED หลัง apply สำเร็จแล้ว ส่วน READY/Check/receipt/return UI ยังรอ P3/P4
 
 ไม่ผูก checklist นี้กับวันส่งมอบตายตัว ประเมินกำลังคนและระยะเวลาใหม่หลัง P0 โดยรวม Google/Central User/login email ที่เพิ่มเข้ามาแล้ว
 
@@ -50,8 +52,8 @@
 - [ ] **P0-08** เตรียม Google Web OAuth client, MFU hosted-domain policy, HTTPS callback URI และอีเมล bootstrap Admin ที่อนุมัติ โดยเก็บ secret นอก repo — มี [config template](../deploy/.env.example); ยังรอ client/URL/บัญชีจริงตาม [Execution Report](p0/Execution_Report.md)
 - [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging — มี template/handoff; ยังไม่ยืนยันบริการสำหรับแอปนี้และยังไม่ส่งอีเมลจริง
 - [x] **P0-10** ทำ compatibility spike ของ Java/Spring Boot/Flowable/PostgreSQL: start engine, deploy BPMN, complete task, timer และ transaction rollback แล้วตรึงเวอร์ชันที่ทดสอบจริง — [spike/result](../spikes/flowable-compatibility/README.md): Java 21.0.13, Boot 4.0.9, Flowable 8.0.0, PostgreSQL 17.11; 3 tests ผ่าน 2026-11-06, timer execute แบบ deterministic
-- [x] **P0-11** กำหนด transaction boundaries สำหรับ business event/outbox, workflow worker/inbox และ login session/audit/email outbox ให้ชัดก่อน implementation — [Design Baseline §5](p0/Design_Baseline.md); shared JDBC/engine rollback ผ่าน spike ส่วน login atomicity ต้องพิสูจน์ใน P1-15/T39
-- [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): schema validation ผ่าน 28 paths / 33 operations
+- [x] **P0-11** กำหนด transaction boundaries สำหรับ business event/outbox, workflow worker/inbox และ login session/audit/email outbox ให้ชัดก่อน implementation — [Design Baseline §5](p0/Design_Baseline.md); shared JDBC/engine rollback ผ่าน spike และ login atomicity/rollback ผ่าน P1-15/T39 แล้วตาม [P1 Report](p1/Execution_Report.md); business workflow synchronization/shared transaction ผ่าน P2 แล้วตาม [P2 Report](p2/Execution_Report.md)
+- [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): P0 baseline 28 paths / 33 operations; P1 validation ผ่าน 35 paths / 42 operations; ล่าสุดหลัง P2 ผ่าน 37 paths / 44 operations โดย direct/observation/default-policy/bulk ของ P4/P5 ยังไม่ถือว่า implement แล้ว
 - [x] **P0-13** ทบทวน UX gaps: ยืนยันรับคืน, conflict/จองหมดอายุ, upload error, sync pending, exception และหน้า Central/Unit Admin — [Design Baseline §6](p0/Design_Baseline.md)
 - [ ] **P0-14** ยืนยัน MVP exclusions: online-only, ไม่เปลี่ยน active-instance mode อัตโนมัติ, ไม่มี QR/OCR/native app และประเมินแผนเวลาด้วย scope ล่าสุด
 
@@ -66,8 +68,8 @@
 ### โครงสร้างและฐานข้อมูล
 
 - [x] **P1-01** สร้าง backend Spring Boot และ frontend Nuxt/TypeScript ตามเวอร์ชันที่ผ่าน P0 พร้อม Maven Wrapper และ package lockfile
-- [x] **P1-02** จัด Compose/Nginx สำหรับ local/staging, same-origin API, environment examples, health endpoint และ secret configuration
-- [x] **P1-03** ตั้ง CI ให้ backend compile/test และ frontend typecheck/build พร้อม PostgreSQL integration tests
+- [x] **P1-02** จัด Compose/Nginx สำหรับ local/staging, same-origin API, environment examples, health endpoint และ secret configuration — [Compose](../compose.yaml) / [dev override](../compose.dev.yaml) ตรวจ config ผ่าน; native JAR health smoke ผ่าน; ยังไม่ได้ build/start containers เพราะ Docker Engine ไม่พร้อม
+- [x] **P1-03** ตั้ง CI ให้ backend compile/test และ frontend typecheck/build พร้อม PostgreSQL integration tests — [CI workflow](../.github/workflows/ci.yml) พร้อมแล้ว; local equivalent ผ่านตาม [ผลทดสอบ](p1/Test_Results.json); ยังไม่ได้รันบน remote CI runner
 - [x] **P1-04** ทำ application migrations: units/users/memberships/station permissions, documents/template versions/route snapshots, reservations/legs, evidence/events, workflow outbox/inbox และ notification data
 - [x] **P1-05** เพิ่ม constraints/indexes ที่ป้องกัน normalized email/sub ซ้ำ, active leg/reservation ซ้ำ และอ้างอิง step ไม่ถูกเรื่อง; แยก application migrations จาก Flowable-owned schema
 
@@ -95,7 +97,7 @@
 
 - [x] **P1-20** ทำ Route Template/version และสร้างหนังสือพร้อม immutable route snapshot, tracking mode และ policy version; บังคับกรอกอย่างน้อยเลขหนังสือหรือชื่อเรื่อง
 - [x] **P1-21** ทำ unit/station-scoped list/detail/timeline APIs; เมนูหนังสือของหน่วยงาน filter ตาม origin และ worklist ของ Station แยกกัน
-- [x] **P1-22** ทำ private photo upload/validate/finalize/checksum/authorized access และ evidence links; รูปยังไม่ validated หรือไม่มีสิทธิ์ใช้ต้อง Check ไม่ได้
+- [x] **P1-22** ทำ private photo upload/validate/finalize/checksum/authorized access และ evidence links; รูปยังไม่ validated หรือไม่มีสิทธิ์ใช้ต้อง Check ไม่ได้ — local storage/authorization/failure tests ผ่าน; S3 adapter มีแล้ว แต่ private bucket/service จริงยังรอตรวจใน staging ตาม P7-11
 - [x] **P1-23** ทำ single-document reserve/cancel/expiry ด้วย transaction/row lock; ยังไม่เปลี่ยน custody จน Check รับ และไม่ expire `IN_TRANSIT`
 - [x] **P1-24** ทำ idempotency key + request hash/result, optimistic version, append-only ledger/corrections และ event/outbox transaction; เอกสารเดียวกันใช้ guard เดียวกันทุกช่องทาง
 - [x] **P1-25** ผ่าน T27–T41 ด้วย isolated test provider/mail sink และทดสอบ reservation race/idempotency/upload failure กับ PostgreSQL จริง
@@ -104,24 +106,38 @@
 
 - [x] **G1** Google/role/Unit/user/email flow มีหลักฐานทดสอบ, สร้างหนังสือพร้อม snapshot/รูปได้, ป้องกันจองซ้ำได้ และพิสูจน์ login transaction rollback; ไม่ใช้ mock auth ใน production — ผ่าน isolated provider/loopback SMTP/PostgreSQL + UI fixtures; ไม่ใช่ staging sign-off และไม่ปิด G0
 
+### งานค้างที่ส่งต่อหลัง P1
+
+| งานค้าง | รายการที่ติดตามต่อ |
+|---|---|
+| Business policies และบัญชี/บริการจริงที่ได้รับอนุมัติ | P0-05–09 และ P0-14; G0 ยังไม่ผ่าน |
+| BPMN, workflow outbox consumer และการเปลี่ยน `PENDING` เป็น `APPLIED` | เสร็จใน P2-01–10/G2 ตาม [ผลทดสอบ](p2/Test_Results.json); ต่อ UI ใน P3/P4 |
+| Build/start container stack และ staging smoke; run CI บน remote runner | P1-02–03 ตรวจ runtime เพิ่มเติมร่วมกับ P6-06 |
+| Private S3 service/bucket permissions จริง | P1-22 ตรวจ integration เพิ่มเติมร่วมกับ P7-11 |
+| Google login บน HTTPS และรับ email ถึง MFU inbox จริง | P8-01–02 / T42 |
+
+รายการส่งต่อเหล่านี้ยังไม่ผ่านการตรวจรับ การมี config/code หรือผ่าน isolated tests ไม่ถือว่าได้ผล staging verification
+
 ## P2 — Flowable BPMN และ workflow synchronization
+
+หลักฐาน P2: [Execution Report](p2/Execution_Report.md), [ผล 47 backend tests / checks / JVM recovery](p2/Test_Results.json), [BPMN executable](../backend/src/main/resources/processes/document_tracking_v1.bpmn20.xml) — A/B เดินครบ A→B→C→A ผ่าน backend พร้อมรูป; UI ยังเป็น P3/P4
 
 ### งานที่ต้องทำ
 
-- [ ] **P2-01** สร้าง deployable BPMN `document_tracking_v1.bpmn20.xml` จริง พร้อม branch Model A และ B ตั้งแต่ต้น
-- [ ] **P2-02** ใช้หนึ่ง instance ต่อ document และ route iterator; เก็บ process definition/version/instance mapping โดยมีกลไกกัน start ซ้ำใน App DB
-- [ ] **P2-03** ทำ task/gateway สำหรับ origin ready, courier pickup/drop-off, unit receipt/processing/ready และ origin return receipt ตาม transition matrix
-- [ ] **P2-04** ทำ Model A physical-pickup/unconfirmed-drop-off/final tracking-complete โดยไม่สร้าง UNIT_READY หรือ UNIT_RECEIPT สมมติ
-- [ ] **P2-05** ทำ backend orchestration ผ่าน Flowable Java API; frontend ไม่ complete Flowable task โดยตรง และ engine variables เก็บเฉพาะข้อมูลจำเป็น ไม่เก็บ binary รูป
-- [ ] **P2-06** ทำ outbox worker เรียง event ต่อ document และตรวจ document + route step + action + task ที่คาดไว้ก่อน apply
-- [ ] **P2-07** ทำ consumed-event/inbox + engine start/complete + ACK/sync projection ใน shared transaction; พิสูจน์ engine rollback ทำให้ consumed marker rollback ด้วย
-- [ ] **P2-08** ทำ retry/backoff/dead-letter และบล็อกคำสั่ง workflow ถัดไปของเรื่องที่ sync pending ตาม policy; API แสดง business state แยก sync status
-- [ ] **P2-09** ทดสอบ restart หลัง business commit, rollback ระหว่าง engine apply, replay หลัง engine commit, duplicate/out-of-order/stale-step event และไม่ advance/start ซ้ำ
-- [ ] **P2-10** ทำ headless A/B tests ครบ A→B→C→A พร้อม repeated-station steps, timer ที่แจ้งเตือนไม่ auto-accept และ process version behavior
+- [x] **P2-01** สร้าง deployable BPMN `document_tracking_v1.bpmn20.xml` จริง พร้อม branch Model A และ B ตั้งแต่ต้น
+- [x] **P2-02** ใช้หนึ่ง instance ต่อ document และ route iterator; เก็บ process definition/version/instance mapping โดยมีกลไกกัน start ซ้ำใน App DB
+- [x] **P2-03** ทำ task/gateway สำหรับ origin ready, courier pickup/drop-off, unit receipt/processing/ready และ origin return receipt ตาม transition matrix
+- [x] **P2-04** ทำ Model A physical-pickup/unconfirmed-drop-off/final tracking-complete โดยไม่สร้าง UNIT_READY หรือ UNIT_RECEIPT สมมติ
+- [x] **P2-05** ทำ backend orchestration ผ่าน Flowable Java API; frontend ไม่ complete Flowable task โดยตรง และ engine variables เก็บเฉพาะข้อมูลจำเป็น ไม่เก็บ binary รูป
+- [x] **P2-06** ทำ outbox worker เรียง event ต่อ document และตรวจ document + route step + action + task ที่คาดไว้ก่อน apply
+- [x] **P2-07** ทำ consumed-event/inbox + engine start/complete + ACK/sync projection ใน shared transaction; พิสูจน์ engine rollback ทำให้ consumed marker rollback ด้วย
+- [x] **P2-08** ทำ retry/backoff/dead-letter และบล็อกคำสั่ง workflow ถัดไปของเรื่องที่ sync pending ตาม policy; API แสดง business state แยก sync status
+- [x] **P2-09** ทดสอบ restart หลัง business commit, rollback ระหว่าง engine apply, replay หลัง engine commit, duplicate/out-of-order/stale-step event และไม่ advance/start ซ้ำ
+- [x] **P2-10** ทำ headless A/B tests ครบ A→B→C→A พร้อม repeated-station steps, timer ที่แจ้งเตือนไม่ auto-accept และ process version behavior
 
 ### Exit Gate P2
 
-- [ ] **G2** BPMN A/B execute ได้จริง; T20/T25/T26 และ transaction/failure tests ผ่าน ไม่มี ACK ที่สำเร็จแต่ task rollback หรือ event เดิมขยับขั้นตอนซ้ำ
+- [x] **G2** BPMN A/B execute ได้จริง; T20/T25/T26 และ transaction/failure tests ผ่าน ไม่มี ACK ที่สำเร็จแต่ task rollback หรือ event เดิมขยับขั้นตอนซ้ำ — ผ่าน PostgreSQL integration tests, concurrent workers และ native JVM restart ตาม [P2 Report](p2/Execution_Report.md); ไม่ใช่ UI/UAT/staging sign-off
 
 ## P3 — Model B ครบเส้นทางผ่าน UI
 
@@ -269,11 +285,11 @@
 | T07–T10 — Model A / observation | P4 | P8 |
 | T11–T16 — Concurrency / bulk / direct | P1 พื้นฐาน, P5 ครบ | P8 |
 | T17–T19 — Default mode / snapshot | P4 | P6/P8 |
-| T20 — Duplicate event / restart | P2 | P6/P8 |
+| T20 — Duplicate event / restart | P2 ผ่าน worker/JVM recovery และ replay ตาม [หลักฐาน](p2/Test_Results.json) | P6/P8 |
 | T21 — Evidence failure | P1/P3 | P8 |
 | T22 — Receipt dispute | P5 | P8 |
 | T23–T25 — Custody / scope / route steps | P2/P3 | P8 |
-| T26 — Process version | P2/P6 | P8 |
+| T26 — Process version | P2 version pinning ผ่าน; deploy/rollback จริงตรวจต่อ P6 | P8 |
 | T27–T34 — Google / identity / provisioning | P1 | P7/P8 |
 | T35 — Revoke / outstanding work / last admin | P1 foundation, P3–P5 งานจริง | P6/P7/P8 |
 | T36–T41 — Login email / failure / session | P1 | P6/P7/P8 |
@@ -287,8 +303,8 @@
 | Phase | ผู้รับผิดชอบ | Commit/PR/ผลทดสอบ | วันที่ผ่าน Gate | เรื่องค้าง/ข้อยกเว้นที่อนุมัติ |
 |---|---|---|---|---|
 | P0 | Codex: technical artifacts; business/infra owners รอระบุ | [Execution Report / test results](p0/Execution_Report.md) | ยังไม่ผ่าน G0 | P0-05–09/P0-14 และ field/image/exception policies ใน Decision Log |
-| P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; workflow execution เริ่ม P2 |
-| P2 | — | — | — | — |
+| P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; backend workflow ผ่าน P2 แล้วตาม [รายงาน](p2/Execution_Report.md); UI รอ P3/P4 |
+| P2 | Codex implementation; independent core review | [47 backend tests + JVM recovery](p2/Execution_Report.md) | 2026-11-06 เฉพาะ backend/headless G2 | G0 ยังเปิด; timer 24h เป็น dev baseline/durable feed ยังไม่ส่ง email; UI P3/P4, operations/staging P6–P8 |
 | P3 | — | — | — | — |
 | P4 | — | — | — | — |
 | P5 | — | — | — | — |

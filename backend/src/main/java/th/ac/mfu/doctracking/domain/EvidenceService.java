@@ -31,7 +31,12 @@ public class EvidenceService {
             if(!actor.hasUnit(TrackingStore.id(doc,"origin_unit_id"))) {
                 actor.requireCapability("COURIER");
                 UUID station=(UUID)s.one("select station_id from route_steps where id=?",doc.get("current_route_step_id")).get("station_id");
-                if(!actor.stationIds().contains(station) || !Set.of("READY_FOR_PICKUP","AWAIT_PHYSICAL_PICKUP","DROPPED_OFF_UNCONFIRMED","PICKUP_RESERVED").contains(doc.get("business_state")))
+                boolean activeOwner=false;
+                if("IN_TRANSIT".equals(doc.get("business_state")) && doc.get("active_leg_id")!=null) {
+                    var leg=s.one("select l.courier_user_id,r.station_id from courier_legs l join route_steps r on r.id=l.to_step_id where l.id=? and l.document_id=? and l.ended_at is null",doc.get("active_leg_id"),input.document_id());
+                    activeOwner=actor.id().equals(leg.get("courier_user_id")) && actor.hasStation(TrackingStore.id(leg,"station_id"));
+                }
+                if(!activeOwner && (!actor.stationIds().contains(station) || !Set.of("READY_FOR_PICKUP","AWAIT_PHYSICAL_PICKUP","DROPPED_OFF_UNCONFIRMED","PICKUP_RESERVED").contains(doc.get("business_state"))))
                     throw new ApiException(404,"NOT_FOUND","Resource not found");
             }
         }

@@ -15,6 +15,10 @@ spring:
   session:
     jdbc:
       initialize-schema: never
+  task:
+    scheduling:
+      pool:
+        size: 3
   servlet:
     multipart:
       max-file-size: 10MB
@@ -52,7 +56,7 @@ management:
 flowable:
   database-schema: ${DATABASE_SCHEMA:public}
   database-schema-update: ${FLOWABLE_SCHEMA_UPDATE:false}
-  async-executor-activate: false
+  async-executor-activate: ${WORKFLOW_TIMER_ENABLED:true}
   check-process-definitions: false
   idm:
     enabled: false
@@ -69,6 +73,7 @@ app:
   bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
   mail-enabled: ${MAIL_ENABLED:false}
   mail-worker-enabled: ${MAIL_WORKER_ENABLED:true}
+  workflow-worker-enabled: ${WORKFLOW_WORKER_ENABLED:true}
   mail-from: ${SMTP_FROM:no-reply@example.invalid}
   it-contact: ${IT_CONTACT:ติดต่อผู้ดูแลระบบของหน่วยงาน}
   session-secure: ${SESSION_SECURE:true}
