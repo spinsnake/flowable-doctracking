@@ -1,7 +1,7 @@
 # Document Tracking — Flowable Development Requirements
 
 > **Document ID:** DTR-FLOWABLE-DEV-001  
-> **Version:** 1.0-draft  
+> **Version:** 1.1-draft
 > **Date:** 2026-11-06 (Asia/Bangkok)  
 > **Status:** Proposed technical specification — **not approved for production**  
 > **Initial implementation:** Model B first; **Model A must remain executable and tested**  
@@ -12,6 +12,7 @@
 เอกสารนี้ต่อยอดจาก `requirements.MD` ฉบับ Business/UX Requirements และชุด Presentation ส่วนหน่วยงาน/ผู้เดินหนังสือ 2 โมเดล จึงแบ่งสถานะข้อกำหนดเป็น:
 
 - **BASELINE:** ข้อกำหนดที่ได้จากการออกแบบ Flow เดิม เช่น ไม่มี QR, Route Template, Check + รูป, ผู้เดินหนังสือรับผิดชอบเป็นช่วง, รับหลายเรื่อง
+- **CONFIRMED ADDITION (2026-11-06):** Google OAuth/OIDC เฉพาะ `@mfu.ac.th` ที่มีสิทธิ์, อีเมลแจ้งเตือนหลัง login สำเร็จ และ Central Admin จัดการ Unit/ผู้ใช้ โดยอ้างอิงพฤติกรรม login/central user จาก `D:\git\DOCTRACKING`; ดู [ข้อกำหนด Login และ Central User](Authentication_and_Central_User_Requirements.md)
 - **TECHNICAL DESIGN:** แนวทางสถาปัตยกรรมและวิธีทำระบบให้สลับโมเดลได้ เป็นข้อเสนอสำหรับทีมพัฒนา
 - **DECISION REQUIRED:** ประเด็นต้องตกลงกับเจ้าของระบบก่อนนำขึ้นใช้งานจริง
 
@@ -27,6 +28,9 @@
 6. ใช้ **Model B เป็นค่าเริ่มต้นของต้นแบบ** แต่รองรับ Model A ด้วย Workflow และ Backend ชุดเดียว
 7. เปลี่ยน **ค่าเริ่มต้นของโมเดลสำหรับหนังสือใหม่** ได้ด้วยการตั้งค่า ไม่ต้องแก้โค้ดหลักหรือเปลี่ยนฐานข้อมูล
 8. **ไม่เปลี่ยนโมเดลของหนังสือที่กำลังเดินอยู่อัตโนมัติ** เว้นแต่ผ่านกระบวนการย้ายโหมดที่ออกแบบและทดสอบแยกต่างหาก
+9. Login ด้วย Google OAuth 2.0 / OpenID Connect โดยใช้เฉพาะอีเมล `@mfu.ac.th` ที่ผู้มีสิทธิ์เพิ่มไว้ก่อน ไม่มี self-registration หรือรหัสผ่านของแอป
+10. ส่งอีเมลแจ้งเตือนเจ้าของบัญชีทุกครั้งที่ login สำเร็จและออก session ใหม่ ผ่านงานเบื้องหลังที่ retry ได้
+11. มี Central Admin เพิ่ม Unit และผู้ใช้หน่วยงาน/UNIT_ADMIN พร้อมกำหนดสิทธิ์และบันทึก audit
 
 ## 2. นิยาม Model A และ Model B
 
@@ -73,9 +77,25 @@
 | **Origin Unit** | Dashboard, ลงทะเบียน, Route Template, **หนังสือของหน่วยงาน**, ติดตาม/ดูหลักฐาน, ยืนยันรับคืนใน Model B |
 | **Station Staff** | เฉพาะ Model B: ยืนยันรับ, กำลังดำเนินการ, แจ้งพร้อมจัดส่ง, ส่งต่อเอง, รายงานไม่พบ/รับไม่ครบ |
 | **Courier** | เลือก Station, งานรับที่มีสิทธิ์, จองรับหลายเรื่อง, Check รับ+รูป, งานกำลังนำส่ง, Check ส่ง+รูป, Timeline |
+| **Central Admin (`ADMIN`)** | Google login โดยไม่ต้องสังกัด Unit, เพิ่ม/แก้ไข/ปิด Unit, แต่งตั้ง UNIT_ADMIN, เพิ่ม/จัดการผู้ใช้หน่วยงาน และตรวจสถานะอีเมลแจ้งเตือน |
+| **Unit Admin (`UNIT_ADMIN`)** | จัดการเฉพาะ STAFF ของ Unit ตน; ไม่สร้าง Unit/ผู้ดูแลกลางหรือเพิ่มข้าม Unit; สิทธิ์หนังสือยังขึ้นกับ Unit/Station scope |
 | **Coordinator/Admin** | มองเห็นตามสิทธิ์ระบบ, ตั้งค่า default mode, จัดการ exception และอนุมัติการแก้เส้นทาง/ย้ายโหมด |
 
 **ข้อจำกัดสิทธิ์:** เมนู **หนังสือของหน่วยงาน** แสดงเฉพาะเรื่องที่หน่วยงานนั้นเป็นต้นทาง ไม่ใช่หนังสือทั้งหมดที่เคยผ่าน Station นั้น; Station Staff ใน Model B มี Worklist รับ/พร้อมจัดส่งแยกต่างหากสำหรับเรื่องที่ต้องทำ แม้ไม่ใช่ต้นเรื่อง
+
+### 3.1 Google Login, Central User และอีเมลแจ้งเตือน
+
+ข้อกำหนดละเอียด, API และ Mermaid login/provisioning อยู่ใน [Authentication and Central User Requirements](Authentication_and_Central_User_Requirements.md) โดยมีหลักบังคับดังนี้:
+
+- Google ยืนยันตัวตน ส่วน App DB กำหนด allowlist/role/unit/station; ตรวจ ID-token signature/issuer/audience/expiry, state/nonce/PKCE, `email_verified`, exact email domain `mfu.ac.th` และ `hd` ตาม MFU policy ฝั่ง backend
+- First login ผูก Google `sub` กับ user ที่เพิ่มไว้โดย row lock/unique constraint; callback ไม่สร้าง user หรือให้สิทธิ์อัตโนมัติ และไม่เปลี่ยน sub เดิมเพียงเพราะอีเมลตรงกัน
+- Central Admin เป็นบัญชี Google รายบุคคลที่มีบทบาทกลาง ไม่ใช่บัญชีที่แชร์รหัสผ่าน; bootstrap ด้วยอีเมลที่อนุมัติจาก configuration โดยไม่คัดลอกอีเมลบุคคลจาก repo อ้างอิงเป็น default
+- Unit ใหม่รอแต่งตั้ง UNIT_ADMIN; บันทึกผู้ดูแลและเปิด Unit แบบ atomic ตามระบบอ้างอิง หน่วยงานที่เปิดใช้ต้องมี Admin อย่างน้อยหนึ่งคน; UNIT_ADMIN เพิ่ม STAFF ได้เฉพาะ Unit ตนเอง
+- Unit เป็นหน่วยงานเจ้าของ Station (`stations.unit_id`); role ด้านการจัดการผู้ใช้แยกจาก Origin/Station/Courier/Coordinator business permissions
+- ปิดผู้ใช้/ย้ายหน่วยงาน/เปลี่ยนบทบาทต้องตรวจงานค้างและ revoke session เดิม; ทุก request ตรวจสถานะบัญชี/unit และสิทธิ์ปัจจุบัน ไม่พึ่งการซ่อนเมนู
+- Finalize login โดย persist session + login audit + notification outbox แบบ atomic ที่ต้องพิสูจน์กับ Spring Session JDBC; ส่งอีเมลถึงเจ้าของบัญชีหลัง commit ทุก login session ใหม่ ไม่ส่งเมื่อ login ถูกปฏิเสธหรือ refresh หน้า
+- SMTP ใช้บริการส่งเมลขององค์กรและ worker retry/dead-letter; เมลส่งล้มเหลวไม่ยกเลิก login ที่ finalize แล้ว และไม่หยุด workflow worker; เก็บ provider-accepted แยกจากการรับถึง inbox
+- โค้ดอ้างอิง `D:\git\DOCTRACKING` HEAD `6b9f18b` มี Google-only login และ central provisioning แล้ว แต่ใน login path ที่ตรวจยังไม่พบ login notification email: ส่วนอีเมลเป็น feature ใหม่ของระบบนี้
 
 ## 4. สถาปัตยกรรมที่เสนอ (TECHNICAL DESIGN)
 
@@ -83,27 +103,39 @@
 flowchart TB
   UI1[Origin and Station Web UI]
   UI2[Courier Mobile Web UI]
+  UI3[Central Admin / Unit Admin UI]
   API[Document Tracking Backend / REST API]
+  GOOGLE[Google OAuth / OIDC]
   DB[(Application Database)]
   FS[(Object Storage: Evidence Photos)]
   OUT[(Outbox / Inbox)]
   ORCH[Flowable BPMN Engine]
+  MAILJOB[Login Notification Worker]
+  MAIL[Organization SMTP Relay]
+  INBOX[User MFU Email Inbox]
   UI1 --> API
   UI2 --> API
+  UI3 --> API
+  API <-->|Authorization code and ID token| GOOGLE
   API --> DB
   API --> FS
   API --> OUT
-  OUT <--> ORCH
+  OUT -->|Workflow events| ORCH
+  ORCH -->|Workflow acknowledgement| OUT
+  OUT -->|Login notification jobs| MAILJOB
+  MAILJOB --> MAIL
+  MAIL --> INBOX
   ORCH --> TASKS[Human Tasks / Gateways / Timers]
 ```
 
 **หน้าที่ของแต่ละชั้น**
 
-- **Application Backend**: Authentication/Authorization, Route Template, Document Registry, Courier Reservation, Bulk Operations, State Validation, Evidence Files, Audit, API และ event orchestration
+- **Application Backend**: Google OIDC/Authorization, Central User/Unit Management, Route Template, Document Registry, Courier Reservation, Bulk Operations, State Validation, Evidence Files, Audit, API และ event orchestration
 - **Flowable BPMN Engine**: รอ Task ของคนที่ถูกต้อง, กำหนดลำดับขั้นตอน, เลือกเงื่อนไข `tracking_mode`, เปิด Task ถัดไป, timeout/escalation, process versioning
 - **Application Database**: เก็บข้อมูลทางธุรกิจ/เหตุการณ์ที่เกิดจริงและสถานะที่คำนวณล่าสุด; ไม่อ่านแก้ตารางภายในของ Flowable โดยตรง
 - **Object Storage**: เก็บรูปจริงพร้อม metadata และ checksum; ฐานข้อมูลเก็บเพียง reference
 - **Outbox/Inbox**: ทำให้การบันทึกธุรกิจและการสั่ง Flowable ประสานกันได้อย่างปลอดภัย แม้คำสั่งส่งซ้ำหรือบริการหยุดชั่วคราว
+- **Notification Worker / Organization SMTP**: ส่งอีเมล login หลัง session/audit/outbox commit; แยก destination/retry จาก workflow queue และไม่ใช้ Gmail scope ของผู้ใช้เพื่อส่งเมล
 
 **แนวทางติดตั้งสำหรับต้นแบบ:** Java + Spring Boot + Flowable Open Source BPMN Engine (Embedded), PostgreSQL, Object Storage แบบ S3-compatible, Frontend เว็บ/มือถือ. ใช้ Service boundary เดียวแบบ Modular Monolith ก่อน; ค่อยแยก Engine เป็นบริการเมื่อมีเหตุผลด้าน Scale/Operations
 
@@ -341,6 +373,8 @@ workflow_policy:
 
 > Endpoint ด้านล่างเป็น API ของ **Document Tracking Backend** ไม่ใช่ URL ของ Flowable REST โดยตรง. ต้องใช้ Authentication/Authorization และ Idempotency ตามประเภทคำสั่ง
 
+Auth/provisioning API เพิ่มเติม: `/api/v1/auth/google/start`, `/api/v1/auth/google/callback`, `/api/v1/auth/me`, `/api/v1/auth/csrf`, `/api/v1/auth/logout`, `/api/v1/units`, `/api/v1/users` และ `/api/v1/admin/login-notifications` ตาม method/role matrix ใน [ข้อกำหนด Authentication §5](Authentication_and_Central_User_Requirements.md#5-api-และข้อมูลที่ต้องเพิ่ม) โดยกำหนด Spring Security callback URI ให้ตรง Google Console
+
 | Method | Endpoint | หน้าที่ | Role |
 |---|---|---|---|
 | `POST` | `/api/v1/documents` | ลงทะเบียน + Snapshot Route + start workflow | Origin |
@@ -434,7 +468,8 @@ Event ที่ควรใช้: `DOCUMENT_REGISTERED`, `UNIT_READY`, `COURIER
 
 - `documents`: document_id, origin_unit_id, document_number?, title?, tracking_mode, policy_version, status, process_instance_id, created_at
 - `route_templates`, `route_template_versions`, `document_route_steps`: template management และ snapshot เส้นทางรายเรื่อง
-- `stations`, `users`, `user_station_permissions`: หน่วยงาน/สิทธิ์
+- `units`, `unit_memberships`, `stations` (`unit_id`), `users`, `user_station_permissions`: หน่วยงาน, จุดรับส่ง, membership และสิทธิ์; users มี unique normalized email, unique nullable `google_sub`, system role, active flag, verified timestamp และ session version
+- Application sessions, `auth_login_events`, `notification_outbox`, `notification_delivery_attempts`: login audit และงานอีเมลที่ติดตาม/retry ได้; ไม่เก็บ OAuth credentials ใน event payload
 - `courier_legs`: from_step/to_step, courier_id, pickup/dropoff timestamps, status
 - `pickup_reservations`, `pickup_reservation_items`: การจองและหมดอายุ
 - `tracking_events`: append-only events, evidence_type, actor, station, step, server time, correlation
@@ -457,6 +492,9 @@ Event ที่ควรใช้: `DOCUMENT_REGISTERED`, `UNIT_READY`, `COURIER
 8. ต้องรองรับการสูญเสียเครือข่ายและการ Retry โดยไม่ Check ซ้ำ; **MVP online-only** และไม่รับประกัน offline commit จนกว่าจะออกแบบเพิ่ม
 9. Backup/restore ทั้ง Application DB, Flowable DB/Schema และ Object Storage พร้อมทดสอบการกู้คืน
 10. ปริมาณการใช้งาน, SLA, latency, storage sizing และ retention ต้องเก็บ Requirement จริงจากผู้ใช้งานก่อนประเมินการ Deploy
+11. ใช้ Google-only login + MFU allowlist ตาม §3.1; secret อยู่ backend, ไม่ log OAuth code/token/cookie และไม่เปิด password fallback เมื่อ Google ขัดข้อง/config ไม่พร้อม
+12. Audit การสร้าง/เปลี่ยน Unit/role/membership และการ login; revoke sessions เมื่อสิทธิ์เปลี่ยน และตรวจ outstanding custody/task ก่อนปิดผู้ใช้หรือ Unit
+13. ทุก login session ใหม่มี notification job ที่ตรวจสอบได้; SMTP failure ต้อง retry ได้และไม่ขัดขวาง login ที่ finalize แล้ว ปฏิเสธ login ไม่สร้าง email job
 
 ## 15. Testing & Acceptance Gates
 
@@ -488,21 +526,41 @@ Event ที่ควรใช้: `DOCUMENT_REGISTERED`, `UNIT_READY`, `COURIER
 | `T24` | ไม่ใช่ต้นทางเข้าดู “หนังสือของหน่วยงาน” | ไม่เห็นเรื่องที่ไม่มีสิทธิ์ |
 | `T25` | Route A→B→C→A | step สุดท้าย A ไม่สับสนกับ step แรก A |
 | `T26` | BPMN deploy เวอร์ชันใหม่ | Instance เก่าคง process definition เดิมจนกว่าจะ migration ที่ได้รับอนุมัติ |
+| `T27` | MFU Google account ที่ถูกเพิ่มสิทธิ์ | Login สำเร็จ, session ID ใหม่ และ role/unit ถูกต้อง |
+| `T28` | Gmail/โดเมนปลอม/unverified email/hd ไม่ตรง | ปฏิเสธโดย backend; ไม่สร้าง session หรือ login email |
+| `T29` | บัญชี MFU ที่ยังไม่ถูกเพิ่ม | เข้าไม่ได้ และ callback ไม่สร้าง user/membership |
+| `T30` | token/state/nonce/PKCE ผิด, หมดอายุ หรือ callback replay | ปฏิเสธ; ไม่เกิด login session/event/email job ซ้ำ |
+| `T31` | First login พร้อมกัน/อีเมลเดิมแต่ Google sub ใหม่ | sub ไม่ผูกข้ามบัญชีและไม่ overwrite identity เดิม |
+| `T32` | Central Admin bootstrap/login | ไม่ต้องสังกัด Unit; bootstrap ซ้ำไม่เพิ่มสิทธิ์หรือเปลี่ยนบัญชีเดิมโดยเงียบ |
+| `T33` | Central Admin สร้าง Unit และ UNIT_ADMIN | Unit รอ Admin ก่อน; แต่งตั้งแล้วเปิด Unit ใน transaction เดียวและมี audit |
+| `T34` | UNIT_ADMIN เพิ่ม/แก้ STAFF | ทำได้เฉพาะ Unit ตน; API ตรงสร้าง Unit/ADMIN/UNIT_ADMIN หรือข้าม Unit ไม่ได้ |
+| `T35` | ปิดบัญชี/Unit หรือย้ายสิทธิ์; Admin คนสุดท้าย | session เดิมหมดสิทธิ์; ไม่ทิ้งงานค้าง/custody; ไม่ถอด Admin คนสุดท้ายของ Unit ที่เปิดใช้ |
+| `T36` | Login สำเร็จทุกบทบาท | มี audit และ email job ถึงอีเมลเจ้าของบัญชี; เนื้อหาไม่มี token/secret และเวลาเป็น Asia/Bangkok |
+| `T37` | SMTP ไม่พร้อมหรือ worker restart | Login ที่ finalize แล้วใช้ต่อได้, notification retry ได้, workflow sync ไม่ถูกบล็อก |
+| `T38` | Refresh/me API และ callback retry | ไม่ส่งอีเมลทุก request; ไม่ enqueue ซ้ำสำหรับ login event เดิม |
+| `T39` | Session save/login audit/outbox failure | ไม่รายงาน login สำเร็จและไม่ส่ง success email จาก transaction ที่ rollback |
+| `T40` | Notification retry หลัง provider ACK ไม่แน่นอน | ติดตาม attempt/Message-ID; ไม่อ้าง exactly-once SMTP; admin retry มี audit |
+| `T41` | Logout/CSRF/สิทธิ์หน้าผู้ใช้และหน่วยงาน | Session แอปถูกตัด, คำสั่งผิด CSRF/role ถูกปฏิเสธ; ไม่อ้าง logout Google ทั้ง browser |
+| `T42` | Staging Google จริงและ mail relay จริง | HTTPS redirect/domain policy ถูกต้อง และตรวจรับอีเมลจริงของบัญชีทดสอบก่อน Pilot |
 
 **Gate สำหรับ Proof of Concept (POC):** ต้องผ่าน `T01–T09`, `T11–T12`, `T17–T19`, `T21`, `T25` ก่อนสาธิตสองโมเดล; ก่อน Pilot จริงต้องผ่านทุกกรณีที่อยู่ใน scope ที่หน่วยงานอนุมัติ
 
+**Gate เพิ่มเติมสำหรับ identity:** P1 ต้องผ่าน T27–T41 ด้วย test provider/mail sink ที่แยกจาก production; Pilot ต้องผ่าน T01–T42 ที่อยู่ใน scope รวม T42 บน staging จริง
+
 ## 16. Implementation Roadmap แบบทำทีละโมดูล
+
+รายการลงมือพัฒนาและ exit gates อยู่ใน [Implementation Checklist P0–P8](Implementation_Checklist.md) โดยอิง roadmap นี้ร่วมกับรายละเอียดลำดับงานที่ปรับแล้วใน [Development Plan](Development_Plan_and_Tech_Stack.md); checklist เพิ่ม Security Testing เป็น P7 ก่อน Pilot ซึ่งย้ายเป็น P8 และต้องผ่าน Security Gate ก่อนเริ่ม Pilot
 
 | Phase | เป้าหมาย / ผลส่งมอบ | Gate |
 |---|---|---|
-| `P0` | ตรึง Business Rules, Mode Policy, นิยาม Completed และสิทธิ์ | เจ้าของระบบอนุมัติรายการ Open Decisions |
-| `P1` | Application Skeleton: Auth, Station, Document, Template, Snapshot, Evidence | สร้างหนังสือ + ดูข้อมูลได้ |
+| `P0` | ตรึง Business Rules/Mode Policy/สิทธิ์; เตรียม Google client/redirect/domain, bootstrap Admin และ SMTP sender | เจ้าของระบบอนุมัติรายการ Open Decisions และ infra identity/email พร้อมสำหรับ staging |
+| `P1` | Skeleton: Google-only login, session+login email outbox, Central/Unit Admin, Unit/ผู้ใช้, Station, Document, Template, Snapshot, Evidence และ single reservation/idempotency/workflow outbox | T27–T41 ผ่าน, สร้าง Unit/ผู้ใช้และหนังสือพร้อมรูปได้; พิสูจน์ transaction ก่อน business flow |
 | `P2` | Flowable BPMN `document_tracking_v1`: branch A/B, route iterator, human tasks, versioning | Unit/Integration Tests BPMN ผ่าน |
 | `P3` | Model B end-to-end A→B→C→A ทั้งหน่วยงานและ Courier | Happy path + receipt/ready guards ผ่าน |
 | `P4` | เปิด Model A branch + physical pickup semantics + wrong-station observation | A happy path + ไม่มี fake event |
 | `P5` | Bulk, reservation, multi-courier, direct transfer, exception | Concurrency/duplicate/conflict tests ผ่าน |
 | `P6` | Admin default switch A/B, Audit, reconciliation, deploy/recovery | Active instances ไม่กระทบ + restore test ผ่าน |
-| `P7` | UX review/pilot กับผู้ใช้จริง, tuning, reporting | UAT sign-off แยกตามโมเดล |
+| `P7` | UX review/pilot กับผู้ใช้จริง, tuning, reporting, Google/SMTP staging verification | T42 และ UAT sign-off แยกตามโมเดล |
 
 **ห้าม** ตีความว่า Gateway เดียวจะทำให้ Model A สำเร็จโดยอัตโนมัติ: ต้องพัฒนาและทดสอบ Branch A จริงตั้งแต่ P2/P4 ไม่ใช่ค่อยแก้หลังเจ้าของระบบเปลี่ยนใจ
 
@@ -525,6 +583,8 @@ Event ที่ควรใช้: `DOCUMENT_REGISTERED`, `UNIT_READY`, `COURIER
 | `D13` | มีเอกสารลับ/อ่อนไหวหรือไม่ | ต้องจำแนกและปิดการเห็นรูป/เรื่องตามสิทธิ์ |
 | `D14` | รองรับ Offline ของ Courier ตั้งแต่ MVP หรือไม่ | เริ่ม online-only |
 | `D15` | ทำ Receipt แบบจับคู่รูป/เลขหนังสืออย่างไร | ชื่อเรื่อง+เลขหนังสือ+รายการ Check, ไม่ต้อง QR |
+| `D16` | Bootstrap Admin และผู้ดูแลสิทธิ์จริงเป็นใคร | กำหนดอีเมล MFU ที่อนุมัติใน configuration; ไม่ใช้บัญชีแชร์/รหัสผ่านสำรอง |
+| `D17` | SMTP sender/relay, ผู้ติดตามเมลล้มเหลวและอายุเก็บ login audit | ใช้ mail relay องค์กร; ส่งถึงเจ้าของบัญชีทุก login, Central Admin ติดตาม failed jobs; ตกลง sender/retry/retention ก่อน Pilot |
 
 ## 18. สิ่งที่ไม่อยู่ในขอบเขต MVP
 
@@ -542,5 +602,7 @@ Event ที่ควรใช้: `DOCUMENT_REGISTERED`, `UNIT_READY`, `COURIER
 4. Flowable Open Source — REST API: https://www.flowable.com/open-source/docs/bpmn/ch14-REST
 5. Flowable Open Source — Process Instance Migration: https://www.flowable.com/open-source/docs/bpmn/ch08-ProcessInstanceMigration
 6. Flowable Enterprise — Process Definition Version and Migration Concept (Enterprise UI features may differ from OSS): https://documentation.flowable.com/latest/user/hub/migration
+
+อ้างอิง Google OIDC, Spring Security, Spring Boot Email และไฟล์โค้ด DOCTRACKING ที่ตรวจ อยู่ใน [Authentication and Central User Requirements](Authentication_and_Central_User_Requirements.md)
 
 > **Final acceptance note:** เอกสารนี้เป็น Development Specification ที่เสนอสำหรับทำ Prototype/Pilot ไม่ใช่การอนุมัติใช้จริง. ต้อง Review รายการ `DECISION REQUIRED`, Validate BPMN in Flowable รุ่นที่เลือก และทดสอบทั้ง `MODEL_A` และ `MODEL_B` ก่อนสาธิตระบบจริง
