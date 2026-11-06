@@ -1,0 +1,1151 @@
+openapi: 3.0.3
+info:
+  title: MFU Document Tracking Application API
+  version: 0.1.0-p0
+  description: |
+    P0 contract for the application backend; this file does not implement authentication or business operations.
+    Flowable is embedded and accessed internally through Java APIs; no engine REST endpoint is exposed here.
+    Business decisions D01-D17 remain subject to the decision log and owner approval. Reservation TTL,
+    bulk atomicity, direct-transfer evidence, retention and SLA values are not approved by this contract.
+
+    All authenticated requests recheck active user/unit, membership, station scope and session version.
+    ADMIN means Central Admin. Coordinator is an explicitly granted operational capability, not an implicit role.
+    Origin/Station are resource contexts, not client supplied roles. Deny by default; lists, details, timeline
+    and evidence all apply the same server authorization. Out-of-scope resources may return 404.
+
+    Mutations require a session-bound X-CSRF-TOKEN; the Google callback instead validates single-use OAuth state,
+    nonce and PKCE. Business/provisioning commands require Idempotency-Key scoped to actor + operation + resource,
+    with request hash: replay returns the original status/body and key reuse with different input returns 409.
+    Validate authorization on replay as well. A document command includes expected_version per item; stale versions
+    return 409 without creating a new event. Actor and recorded_at come from the session/server, never request input.
+
+    A 202 means the business transaction committed but workflow synchronization is PENDING; it does not mean the next
+    Flowable task is available. Clients read the operation/document until APPLIED; FAILED_RETRYABLE is visible and
+    retries reference the original operation. Commands advancing the same workflow are blocked while sync is pending.
+    Model and route snapshot are immutable after registration; only a new document reads the current default policy.
+    Times use UTC RFC3339; the UI displays Asia/Bangkok. All non-redirect responses use Cache-Control: no-store.
+servers:
+  - url: /api/v1
+    description: Same-origin backend behind HTTPS
+security:
+  - sessionCookie: []
+tags:
+  - name: Auth
+  - name: Provisioning
+  - name: Registry
+  - name: Tracking
+  - name: Operations
+paths:
+  /auth/google/start:
+    get:
+      tags: [Auth]
+      operationId: startGoogleLogin
+      security: []
+      summary: Begin backend authorization-code Google login
+      description: Rate limited. Generate state, nonce and PKCE; redirect URI is configured server-side. No arbitrary return URL.
+      responses:
+        '302':
+          description: Redirect to Google; transient OAuth correlation cookie has Secure, HttpOnly and SameSite flags.
+          headers:
+            Location: {schema: {type: string, format: uri}}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /auth/google/callback:
+    get:
+      tags: [Auth]
+      operationId: completeGoogleLogin
+      security: []
+      summary: Verify Google identity and finalize login
+      description: |
+        Require valid signature/issuer/audience/expiry, email_verified, exact @mfu.ac.th suffix and configured hd policy.
+        Only active allowlisted users can login. First-link google_sub is locked/unique; no automatic user creation.
+        Atomically persist regenerated session, login audit and notification outbox before success redirect.
+        SMTP delivery is asynchronous and never blocks a finalized login. Replay cannot create a second session/email.
+        Google denial may supply error instead of code; validate state and return a sanitized error without echoing secrets.
+      parameters:
+        - {name: state, in: query, required: true, schema: {type: string, minLength: 1}}
+        - {name: code, in: query, schema: {type: string, minLength: 1}}
+        - {name: error, in: query, schema: {type: string}}
+      responses:
+        '302':
+          description: Redirect to fixed application location after committed session/audit/email job.
+          headers:
+            Location: {schema: {type: string}}
+            Set-Cookie: {description: 'New application session; Secure, HttpOnly, SameSite=Lax, Path=/. Never return tokens.', schema: {type: string}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Read current effective identity and scope
+      responses:
+        '200':
+          description: No OAuth credentials or session identifiers are returned.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CurrentUser'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /auth/csrf:
+    get:
+      tags: [Auth]
+      operationId: getCsrfToken
+      summary: Bootstrap CSRF token for the current authenticated session
+      responses:
+        '200':
+          description: Session-bound token; never store in a URL or log.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [header_name, token]
+                properties:
+                  header_name: {type: string, enum: [X-CSRF-TOKEN]}
+                  token: {type: string}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Invalidate application session and clear cookie
+      description: Does not log the browser out of Google. Requires CSRF; no business idempotency key is needed.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+      responses:
+        '204': {description: Application session invalidated.}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /units:
+    get:
+      tags: [Provisioning]
+      operationId: listUnits
+      summary: List units visible to the caller
+      description: ADMIN can also see units waiting for an administrator. Other users see only authorized active units.
+      parameters:
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Scoped units.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Unit'}}
+                  next_cursor: {type: string, nullable: true}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Provisioning]
+      operationId: createUnit
+      summary: ADMIN creates a unit waiting for UNIT_ADMIN
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code, name]
+              properties:
+                code: {type: string, minLength: 1, maxLength: 50}
+                name: {type: string, minLength: 1, maxLength: 255}
+      responses:
+        '201':
+          description: Inactive unit created; no user or station is inferred.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Unit'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /units/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    patch:
+      tags: [Provisioning]
+      operationId: updateUnit
+      summary: ADMIN updates unit details or active status
+      description: Reject closing with outstanding custody/tasks without approved resolution. Active unit needs an active UNIT_ADMIN. Audit and revoke affected sessions.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version, reason]
+              properties:
+                expected_version: {type: integer, format: int64, minimum: 0}
+                name: {type: string, minLength: 1, maxLength: 255}
+                is_active: {type: boolean}
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '200':
+          description: Updated unit.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Unit'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /users:
+    get:
+      tags: [Provisioning]
+      operationId: listUsers
+      summary: ADMIN directory or UNIT_ADMIN own-unit directory
+      description: STAFF cannot read the directory. Query parameters never expand caller scope.
+      parameters:
+        - {name: unit_id, in: query, schema: {type: string, format: uuid}}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Scoped users without raw Google sub, credentials or session identifiers.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/User'}}
+                  next_cursor: {type: string, nullable: true}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Provisioning]
+      operationId: provisionUser
+      summary: Provision allowlisted MFU user and unit membership
+      description: |
+        ADMIN provisions UNIT_ADMIN/STAFF. UNIT_ADMIN provisions STAFF in own unit only. Appointing UNIT_ADMIN
+        and activating a waiting unit commit atomically. No ADMIN creation, self-escalation or cross-unit privilege.
+        Courier grants are explicit station-scoped grants outside this unit form; do not infer them from STAFF.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProvisionUser'}
+      responses:
+        '201':
+          description: User awaits first Google login; no password or enrollment link.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /users/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    patch:
+      tags: [Provisioning]
+      operationId: updateUser
+      summary: Update scoped user, membership or active status
+      description: |
+        ADMIN or own UNIT_ADMIN under role matrix. UNIT_ADMIN edits own-unit STAFF only and cannot promote to UNIT_ADMIN.
+        No Google identity/email editing or ADMIN creation. Reject last-admin removal and unresolved outstanding work
+        with 409; revoke affected sessions and audit before success. No hard deletion of history.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version, reason]
+              properties:
+                expected_version: {type: integer, format: int64, minimum: 0}
+                display_name: {type: string, minLength: 1, maxLength: 255}
+                unit_id: {type: string, format: uuid}
+                unit_role: {type: string, enum: [UNIT_ADMIN, STAFF]}
+                is_active: {type: boolean}
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '200':
+          description: Updated identity view.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /route-templates:
+    get:
+      tags: [Registry]
+      operationId: listRouteTemplates
+      summary: List templates authorized for the origin
+      responses:
+        '200':
+          description: Visible template versions.
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/RouteTemplate'}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Registry]
+      operationId: createRouteTemplate
+      summary: Origin creates a route template version
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RouteTemplateInput'}
+      responses:
+        '201':
+          description: Template created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RouteTemplate'}
+        default: {$ref: '#/components/responses/Error'}
+  /route-templates/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    put:
+      tags: [Registry]
+      operationId: reviseRouteTemplate
+      summary: Origin publishes a new template version
+      description: Existing document snapshots and earlier template versions stay immutable.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/RouteTemplateInput'}
+                - type: object
+                  required: [expected_version]
+                  properties:
+                    expected_version: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: New template version; never mutate snapshots.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RouteTemplate'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        default: {$ref: '#/components/responses/Error'}
+  /documents:
+    get:
+      tags: [Registry]
+      operationId: listOriginDocuments
+      summary: Origin's document registry
+      description: scope=origin filters origin ownership, never station worklist membership.
+      parameters:
+        - {name: scope, in: query, required: true, schema: {type: string, enum: [origin]}}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Authorized origin registry.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DocumentPage'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Registry]
+      operationId: registerDocument
+      summary: Register a document and immutable route/mode snapshots
+      description: Origin scope required. The server reads default mode/policy version in the same transaction; no mode override accepted.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [origin_station_id, template_id, template_version]
+              description: Trim title and document_number before persistence; at least one must contain a non-whitespace character. Normalize an absent or blank optional value to null.
+              anyOf:
+                - required: [title]
+                  properties:
+                    title: {type: string, minLength: 1, pattern: '\S'}
+                - required: [document_number]
+                  properties:
+                    document_number: {type: string, minLength: 1, pattern: '\S'}
+              properties:
+                title: {type: string, nullable: true, maxLength: 500}
+                document_number: {type: string, nullable: true, maxLength: 255}
+                origin_station_id: {type: string, format: uuid}
+                template_id: {type: string, format: uuid}
+                template_version: {type: integer, minimum: 1}
+      responses:
+        '201': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /documents/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Registry]
+      operationId: getDocument
+      summary: Read scoped document state, snapshot and workflow sync
+      responses:
+        '200':
+          description: Authorized state.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Document'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /documents/{id}/timeline:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Registry]
+      operationId: getTimeline
+      summary: Read scoped append-only timeline with authorized evidence references
+      parameters:
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Filter every event/evidence link by the caller's scope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/TimelineEvent'}}
+                  next_cursor: {type: string, nullable: true}
+        default: {$ref: '#/components/responses/Error'}
+  /documents/{id}/ready:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      tags: [Tracking]
+      operationId: markReady
+      summary: Model B unit marks the current step ready
+      description: Origin first step may ready after registration; later steps require confirmed unit receipt. No Model A synthetic ready.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StepCommand'}
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /documents/{id}/confirm-return:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      tags: [Tracking]
+      operationId: confirmReturn
+      summary: Origin confirms return at the final Model B route step
+      description: Must reference final step_id even when the origin station also occurs at step 1. Only this confirmation completes Model B.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StepCommand'}
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /documents/{id}/observations:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      tags: [Tracking]
+      operationId: recordObservation
+      summary: Authorized courier or operator records physical observation in Model A
+      description: |
+        Never infer the missing transfer actor/time or create synthetic unit receipt/ready. Reconciliation to a later route
+        step requires permitted policy; off-route observations open an exception and do not advance automatically.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version, observed_station_id, evidence_upload_ids, reason]
+              properties:
+                expected_version: {type: integer, format: int64, minimum: 0}
+                observed_station_id: {type: string, format: uuid}
+                proposed_route_step_id: {type: string, format: uuid, nullable: true}
+                evidence_upload_ids: {type: array, minItems: 1, uniqueItems: true, items: {type: string, format: uuid}}
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /stations/{id}/worklist:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Tracking]
+      operationId: getStationWorklist
+      summary: Station task/worklist for authorized Unit or Courier
+      description: Model B pickup requires ready; Model A list reports last-known position, not a guarantee of physical availability.
+      parameters:
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Scoped worklist.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DocumentPage'}
+        default: {$ref: '#/components/responses/Error'}
+  /courier/reservations:
+    post:
+      tags: [Tracking]
+      operationId: reservePickup
+      summary: Courier reserves one or more documents at a station
+      description: |
+        Lock documents in deterministic order and guard direct-transfer concurrency. One active reservation/leg per document.
+        Bulk atomicity follows the approved decision; proposed all-or-nothing rejects the entire selection on any conflict.
+        No silent subset. TTL comes from server policy; expiry never releases IN_TRANSIT custody.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BatchCommand'}
+      responses:
+        '201':
+          description: Reservation committed; this is not a physical pickup.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Reservation'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /courier/reservations/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    delete:
+      tags: [Tracking]
+      operationId: cancelReservation
+      summary: Reservation owner or explicitly authorized operator cancels before pickup
+      description: |
+        Cannot cancel an IN_TRANSIT leg. Version guards the reservation; cancellation is atomic and audited.
+        Non-owners require an explicit reservation-resolution grant, resource scope and nonblank reason in the
+        optional JSON request body. ADMIN/Coordinator role alone does not grant this action. Missing required
+        non-owner reason returns 422; missing grant/scope returns 403. The owner may omit the body.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+        - {name: expected_version, in: query, required: true, schema: {type: integer, format: int64, minimum: 0}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 1, maxLength: 1000, pattern: '\S', description: Audited operational reason; mandatory when cancelling another user's reservation.}
+      responses:
+        '200':
+          description: Cancelled reservation.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Reservation'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /courier/check-receive:
+    post:
+      tags: [Tracking]
+      operationId: checkReceive
+      summary: Reservation owner records pickup with validated photo
+      description: Model A requires physical presence confirmation. Model B requires ready. Unexpired owner reservation and matching route steps/versions are mandatory.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/EvidenceBatchCommand'}
+                - type: object
+                  required: [reservation_id, physical_presence_confirmed]
+                  properties:
+                    reservation_id: {type: string, format: uuid}
+                    physical_presence_confirmed: {type: boolean, enum: [true]}
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /courier/check-dropoff:
+    post:
+      tags: [Tracking]
+      operationId: checkDropoff
+      summary: Active leg owner records drop-off with validated photo
+      description: Submit only documents at the same actual destination station; items identify active legs. Model B opens receipt/return confirmation, Model A never synthesizes it.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/EvidenceBatchCommand'}
+                - type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        allOf:
+                          - {$ref: '#/components/schemas/BatchItem'}
+                          - {type: object, required: [leg_id]}
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /stations/{id}/confirm-receipt:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      tags: [Tracking]
+      operationId: confirmReceipt
+      summary: Model B destination unit confirms selected receipts
+      description: Own station only; no mandatory photo for normal receipt. Final-origin return uses confirm-return. Partial selection is explicit, never silently removed from a submitted batch.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BatchCommand'}
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /stations/{id}/direct-transfer:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      tags: [Tracking]
+      operationId: directTransfer
+      summary: Model B unit directly dispatches to next route step
+      description: |
+        Must own source station, have completed unit processing and have no competing reservation/active courier leg.
+        Destination must match immutable route. D06 determines required evidence; no default approval is implied.
+        Destination still confirms receipt; direct transfer never fabricates courier Checks.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/BatchCommand'}
+                - type: object
+                  required: [destination_station_id]
+                  properties:
+                    destination_station_id: {type: string, format: uuid}
+                    evidence_upload_ids: {type: array, uniqueItems: true, items: {type: string, format: uuid}}
+                    items:
+                      type: array
+                      items:
+                        allOf:
+                          - {$ref: '#/components/schemas/BatchItem'}
+                          - {type: object, required: [to_route_step_id]}
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '202': {$ref: '#/components/responses/CommandPending'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /operations/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Operations]
+      operationId: getOperation
+      summary: Poll command outcome and workflow sync under original resource scope
+      responses:
+        '200': {$ref: '#/components/responses/CommandApplied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /admin/workflow-policy:
+    get:
+      tags: [Operations]
+      operationId: getWorkflowPolicy
+      summary: ADMIN reads current default workflow policy
+      responses:
+        '200':
+          description: Default used only when a document is registered.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkflowPolicy'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [Operations]
+      operationId: updateWorkflowPolicy
+      summary: ADMIN switches default mode for new documents only
+      description: Audit reason and old/new versions. Existing document modes and running process definitions are never migrated by this operation.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version, default_tracking_mode, reason]
+              properties:
+                expected_version: {type: integer, format: int64, minimum: 0}
+                default_tracking_mode: {$ref: '#/components/schemas/TrackingMode'}
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '200':
+          description: New version; applies only to new registrations.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkflowPolicy'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /admin/login-notifications:
+    get:
+      tags: [Operations]
+      operationId: listLoginNotifications
+      summary: ADMIN reads sanitized login email delivery status
+      parameters:
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/NotificationStatus'}}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Provider acceptance is not inbox delivery or read confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/LoginNotification'}}
+                  next_cursor: {type: string, nullable: true}
+        default: {$ref: '#/components/responses/Error'}
+  /admin/login-notifications/{id}/retry:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      tags: [Operations]
+      operationId: retryLoginNotification
+      summary: ADMIN retries the original failed notification with audit
+      description: No new login or recipient is created. Provider ACK uncertainty may cause duplicate SMTP delivery; preserve stable Message-ID internally.
+      parameters:
+        - {$ref: '#/components/parameters/Csrf'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version, reason]
+              properties:
+                expected_version: {type: integer, format: int64, minimum: 0}
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '202':
+          description: Original job queued for retry; mail is not yet delivered.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LoginNotification'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION
+      description: Opaque Spring Session cookie over HTTPS; Secure, HttpOnly, SameSite=Lax. Google tokens never reach frontend storage.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    Csrf:
+      name: X-CSRF-TOKEN
+      in: header
+      required: true
+      description: Session-bound token from GET /auth/csrf. Missing/invalid token returns 403.
+      schema: {type: string, minLength: 1}
+    Idempotency:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique command key; reuse only to retry identical request for the same actor/operation/resource.
+      schema: {type: string, minLength: 1, maxLength: 128}
+    Cursor:
+      name: cursor
+      in: query
+      schema: {type: string}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+  responses:
+    CommandApplied:
+      description: Persisted command or current operation state; inspect process_sync_status rather than assuming task availability.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/CommandResult'}
+    CommandPending:
+      description: Business transaction committed; workflow synchronization pending. Poll Location. Do not submit the next transition yet.
+      headers:
+        Location: {description: 'Relative /api/v1/operations/{operation_id} URL.', schema: {type: string}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/CommandResult'}
+    BadRequest:
+      description: Invalid input or expired/replayed/malformed OAuth callback; no side effect.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    Unauthenticated:
+      description: Missing, expired or revoked application session.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    Forbidden:
+      description: Role, active-unit, station, ownership or CSRF requirement failed.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    NotFound:
+      description: Resource not found or not visible in the caller's scope.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    Conflict:
+      description: Stale version, competing reservation/leg, expired reservation, pending sync, last-admin/outstanding-work guard or idempotency payload mismatch.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    RuleViolation:
+      description: Input parsed but violates model, route, validated-evidence or approved business policy. No implicit approval of pending decisions.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After: {schema: {type: integer, minimum: 1}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    Unavailable:
+      description: Provider/config/persistence unavailable; login is not finalized if session/audit/outbox cannot commit.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    Error:
+      description: 'Application error; code and correlation_id are stable/sanitized. May include 400, 401, 403, 404, 409, 422, 429 or 503.'
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+  schemas:
+    TrackingMode: {type: string, enum: [MODEL_A, MODEL_B]}
+    ProcessSyncStatus: {type: string, enum: [APPLIED, PENDING, FAILED_RETRYABLE]}
+    BusinessState:
+      type: string
+      enum: [REGISTERED, WAIT_ORIGIN_READY, AWAIT_PHYSICAL_PICKUP, READY_FOR_PICKUP, PICKUP_RESERVED, IN_TRANSIT, DROPPED_OFF_UNCONFIRMED, PENDING_UNIT_RECEIPT, UNIT_PROCESSING, DIRECT_UNIT_IN_TRANSIT, PENDING_ORIGIN_RETURN_RECEIPT, COURIER_TRACKING_COMPLETE, COMPLETED, EXCEPTION]
+    Unit:
+      type: object
+      required: [id, code, name, is_active, provisioning_status, version]
+      properties:
+        id: {type: string, format: uuid}
+        code: {type: string}
+        name: {type: string}
+        is_active: {type: boolean}
+        provisioning_status: {type: string, enum: [WAITING_UNIT_ADMIN, READY]}
+        version: {type: integer, format: int64, minimum: 0}
+    ProvisionUser:
+      type: object
+      additionalProperties: false
+      required: [email, display_name, unit_id, unit_role]
+      properties:
+        email: {type: string, format: email, pattern: '^[^@\s]+@mfu\.ac\.th$'}
+        display_name: {type: string, minLength: 1, maxLength: 255}
+        unit_id: {type: string, format: uuid}
+        unit_role: {type: string, enum: [UNIT_ADMIN, STAFF]}
+    User:
+      type: object
+      required: [id, email, display_name, is_active, identity_status, system_roles, memberships, version]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string, format: email}
+        display_name: {type: string}
+        is_active: {type: boolean}
+        identity_status: {type: string, enum: [AWAITING_FIRST_GOOGLE_LOGIN, GOOGLE_LINKED]}
+        system_roles: {type: array, uniqueItems: true, items: {type: string, enum: [ADMIN, COURIER]}}
+        memberships:
+          type: array
+          items:
+            type: object
+            required: [unit_id, role, is_active]
+            properties:
+              unit_id: {type: string, format: uuid}
+              role: {type: string, enum: [UNIT_ADMIN, STAFF]}
+              is_active: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+    CurrentUser:
+      allOf:
+        - {$ref: '#/components/schemas/User'}
+        - type: object
+          required: [station_ids, capabilities]
+          properties:
+            station_ids: {type: array, uniqueItems: true, items: {type: string, format: uuid}}
+            capabilities: {type: array, uniqueItems: true, items: {type: string}, description: 'Explicit effective permissions, including coordinator capability when granted.'}
+    RouteTemplateInput:
+      type: object
+      required: [name, origin_unit_id, station_ids]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 255}
+        origin_unit_id: {type: string, format: uuid}
+        station_ids:
+          type: array
+          minItems: 2
+          description: Ordered route including final return to origin. Repeated station is valid; each occurrence gets distinct step_id.
+          items: {type: string, format: uuid}
+    RouteTemplate:
+      allOf:
+        - {$ref: '#/components/schemas/RouteTemplateInput'}
+        - type: object
+          required: [id, version]
+          properties:
+            id: {type: string, format: uuid}
+            version: {type: integer, minimum: 1}
+    RouteStep:
+      type: object
+      required: [step_id, sequence, station_id]
+      properties:
+        step_id: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 0, description: 'Zero-based position in the immutable route snapshot; origin is 0, and the final return has its own later sequence and step_id.'}
+        station_id: {type: string, format: uuid}
+    Document:
+      type: object
+      required: [id, title, origin_unit_id, origin_station_id, tracking_mode, policy_version, route_snapshot, business_state, version, current_route_step_id, pending_receipt_step_id, reported_location_step_id, process_sync_status]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string, nullable: true, description: Null when the document was registered using only document_number.}
+        document_number: {type: string, nullable: true}
+        origin_unit_id: {type: string, format: uuid}
+        origin_station_id: {type: string, format: uuid}
+        tracking_mode: {$ref: '#/components/schemas/TrackingMode'}
+        policy_version: {type: integer, format: int64}
+        route_snapshot: {type: array, items: {$ref: '#/components/schemas/RouteStep'}}
+        business_state: {$ref: '#/components/schemas/BusinessState'}
+        version: {type: integer, format: int64, minimum: 0}
+        current_route_step_id: {type: string, format: uuid, description: 'Current business route cursor; never inferred from station name. See P0 transition matrix for advancement.'}
+        pending_receipt_step_id: {type: string, format: uuid, nullable: true, description: 'Destination step awaiting Model B receipt/return confirmation; separate from the current business cursor. Null when no receipt is pending.'}
+        reported_location_step_id: {type: string, format: uuid, nullable: true, description: 'Last reported station occurrence; not physical proof and not in-transit custody.'}
+        active_leg_id: {type: string, format: uuid, nullable: true}
+        process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
+        latest_operation_id: {type: string, format: uuid, nullable: true}
+    DocumentPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Document'}}
+        next_cursor: {type: string, nullable: true}
+    StepCommand:
+      type: object
+      additionalProperties: false
+      required: [route_step_id, expected_version]
+      properties:
+        route_step_id: {type: string, format: uuid}
+        expected_version: {type: integer, format: int64, minimum: 0}
+    BatchItem:
+      type: object
+      additionalProperties: false
+      required: [document_id, route_step_id, expected_version]
+      properties:
+        document_id: {type: string, format: uuid}
+        route_step_id: {type: string, format: uuid, description: 'Pickup/ready source step or receipt/drop-off destination step for the named command.'}
+        expected_version: {type: integer, format: int64, minimum: 0}
+        leg_id: {type: string, format: uuid, description: Required for check-dropoff; must be the actor's active leg.}
+        to_route_step_id: {type: string, format: uuid, description: Required for direct-transfer; must be the next permitted destination occurrence.}
+    BatchCommand:
+      type: object
+      required: [station_id, items]
+      properties:
+        station_id: {type: string, format: uuid, description: Must match path station where present.}
+        items: {type: array, minItems: 1, uniqueItems: true, items: {$ref: '#/components/schemas/BatchItem'}, description: 'No repeated document_id; server validates selection uniqueness.'}
+    EvidenceBatchCommand:
+      allOf:
+        - {$ref: '#/components/schemas/BatchCommand'}
+        - type: object
+          required: [evidence_upload_ids]
+          properties:
+            evidence_upload_ids:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              description: 'Only finalized, validated, authorized uploads. Shared batch photo links to every selected item; upload failure prevents the entire affected command.'
+              items: {type: string, format: uuid}
+    Reservation:
+      type: object
+      allOf:
+        - {$ref: '#/components/schemas/CommandResult'}
+      required: [id, owner_user_id, station_id, items, status, expires_at, version, operation_id, correlation_id]
+      properties:
+        id: {type: string, format: uuid}
+        owner_user_id: {type: string, format: uuid}
+        station_id: {type: string, format: uuid}
+        items: {type: array, items: {$ref: '#/components/schemas/BatchItem'}}
+        status: {type: string, enum: [ACTIVE, CANCELLED, EXPIRED, CONSUMED]}
+        expires_at: {type: string, format: date-time, description: Server time based on configured policy; no hard-coded TTL approval.}
+        version: {type: integer, format: int64, minimum: 0}
+        operation_id: {type: string, format: uuid}
+        correlation_id: {type: string}
+    CommandResult:
+      type: object
+      required: [operation_id, document_ids, accepted, rejected, event_ids, updated_states, process_sync_status, correlation_id]
+      properties:
+        operation_id: {type: string, format: uuid}
+        document_ids: {type: array, items: {type: string, format: uuid}}
+        accepted: {type: array, items: {type: string, format: uuid}}
+        rejected: {type: array, items: {$ref: '#/components/schemas/ItemError'}}
+        event_ids: {type: array, items: {type: string, format: uuid}}
+        updated_states:
+          type: array
+          items:
+            type: object
+            required: [document_id, version, business_state, process_sync_status]
+            properties:
+              document_id: {type: string, format: uuid}
+              version: {type: integer, format: int64, minimum: 0}
+              business_state: {$ref: '#/components/schemas/BusinessState'}
+              process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
+        process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
+        correlation_id: {type: string}
+    ItemError:
+      type: object
+      required: [document_id, code, message]
+      properties:
+        document_id: {type: string, format: uuid}
+        code: {type: string, example: STALE_VERSION}
+        message: {type: string, description: Sanitized; no out-of-scope state or ownership data.}
+        current_version: {type: integer, format: int64, minimum: 0}
+        current_state: {$ref: '#/components/schemas/BusinessState'}
+    ApiError:
+      type: object
+      required: [code, message, correlation_id]
+      properties:
+        code: {type: string, example: RESERVATION_CONFLICT}
+        message: {type: string}
+        correlation_id: {type: string}
+        item_errors: {type: array, items: {$ref: '#/components/schemas/ItemError'}}
+        operation_id: {type: string, format: uuid, description: Only when identifying an already committed operation.}
+    TimelineEvent:
+      type: object
+      required: [event_id, event_type, document_id, sequence, recorded_at, actor_id, evidence_ids]
+      properties:
+        event_id: {type: string, format: uuid}
+        event_type: {type: string, example: COURIER_DROPPED_OFF}
+        document_id: {type: string, format: uuid}
+        sequence: {type: integer, format: int64, minimum: 1}
+        route_step_id: {type: string, format: uuid, nullable: true}
+        from_step_id: {type: string, format: uuid, nullable: true}
+        to_step_id: {type: string, format: uuid, nullable: true}
+        recorded_at: {type: string, format: date-time}
+        actor_id: {type: string, format: uuid, nullable: true, description: Null for unobserved transfer; never invent actor/time.}
+        evidence_ids: {type: array, items: {type: string, format: uuid}, description: IDs are not public URLs; evidence access must authorize document/event/upload.}
+    WorkflowPolicy:
+      type: object
+      required: [default_tracking_mode, version, changed_at]
+      properties:
+        default_tracking_mode: {$ref: '#/components/schemas/TrackingMode'}
+        version: {type: integer, format: int64, minimum: 0}
+        changed_at: {type: string, format: date-time}
+    NotificationStatus:
+      type: string
+      enum: [PENDING, PROCESSING, RETRY_WAIT, ACCEPTED_BY_PROVIDER, FAILED]
+    LoginNotification:
+      type: object
+      required: [id, recipient, status, attempt_count, version]
+      properties:
+        id: {type: string, format: uuid}
+        recipient: {type: string, format: email}
+        status: {$ref: '#/components/schemas/NotificationStatus'}
+        attempt_count: {type: integer, minimum: 0}
+        next_retry_at: {type: string, format: date-time, nullable: true}
+        last_error_code: {type: string, nullable: true, description: Sanitized error code only; never provider credentials/raw responses.}
+        version: {type: integer, format: int64, minimum: 0}

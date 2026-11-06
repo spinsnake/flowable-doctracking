@@ -6,9 +6,11 @@
 
 อัปเดตข้อกำหนด: Google OAuth/OIDC เฉพาะ `@mfu.ac.th`, login notification email และ Central Admin จัดการ Unit/ผู้ใช้ ตาม [Authentication and Central User Requirements](Authentication_and_Central_User_Requirements.md) โดยตรวจโค้ดอ้างอิง `D:\git\DOCTRACKING` HEAD `6b9f18b` แล้ว
 
+สถานะ implementation P0: [Design/Decision Log และผล compatibility spike](p0/Execution_Report.md) พร้อมแล้ว — Java 21.0.13 + Boot 4.0.9 + Flowable 8.0.0 + PostgreSQL 17.11 ผ่าน 3 integration tests; business/Google/SMTP dependencies ยังไม่ครบ จึงยังไม่ผ่าน G0
+
 ## 1. ผลจากการอ่าน repository
 
-Repository ณ วันที่ตรวจมีเอกสารและ local skills แต่ยังไม่มี application source, build manifest, database migration, BPMN XML หรือ automated tests จึงเป็นการวางแผนเริ่มระบบใหม่ ไม่ใช่ refactor ระบบเดิม
+เมื่อเริ่มวางแผน repository มีเอกสารและ local skills แต่ยังไม่มี application source/build/migrations จึงวางแผนเริ่มระบบใหม่ ต่อมา P0 เพิ่ม executable compatibility spike/BPMN/tests และ OpenAPI แยกไว้แล้วตาม Execution Report; ส่วน application skeleton และ business migrations ยังเป็นงาน P1
 
 อ่านข้อกำหนด [Document Tracking Requirements](Document_Tracking_Flowable_Development_Requirements.md) และแบบ UX/UI ครบ 4 ไฟล์ รวม 29 หน้า:
 
@@ -53,11 +55,11 @@ Repository ณ วันที่ตรวจมีเอกสารและ l
 
 การเลือก Nuxt เป็นข้อเสนอสำหรับ repo ใหม่ ไม่พบหลักฐานว่าทีมใช้ framework ใดอยู่แล้ว หากทีมมีมาตรฐาน Vue + Vite สามารถใช้แทนได้โดยไม่เปลี่ยน backend หรือ domain design
 
-### เวอร์ชัน: ตรวจจากเอกสารแล้ว แต่ยังไม่ได้ build พิสูจน์
+### เวอร์ชัน: P0 พิสูจน์ backend compatibility แล้ว; frontend รอ P1
 
 - Flowable 8 เปลี่ยนเป็น Spring Boot 4 / Spring Framework 7 และไม่รองรับ Boot 3 ตาม [release notes](https://github.com/flowable/flowable-engine/releases/tag/flowable-8.0.0)
 - [Flowable Spring Boot guide](https://www.flowable.com/open-source/docs/bpmn/ch05a-Spring-Boot) ระบุรองรับ Boot 4.x; [dependency POM ของ Flowable 8.0.0](https://github.com/flowable/flowable-engine/blob/flowable-8.0.0/modules/flowable-dependencies/pom.xml) ใช้ Boot 4.0.2 เป็นฐาน upstream
-- เสนอทดสอบ **Java 21 + Flowable 8.0.0 + Spring Boot 4.0.9** เป็น candidate เริ่มต้น โดย Boot 4.0.9 ปรากฏใน [เอกสารทางการ](https://docs.spring.io/spring-boot/4.0/system-requirements.html) ที่ตรวจครั้งนี้ การรองรับ Boot 4.x ไม่ใช่หลักฐานว่า dependency ทุกตัวของแอปผ่าน integration แล้ว
+- P0 ทดสอบ **Java 21.0.13 + Flowable 8.0.0 + Spring Boot 4.0.9 + PostgreSQL 17.11** ผ่าน start/deploy/task/timer/rollback/deduplication ใน [spike](../spikes/flowable-compatibility/README.md) แล้ว การรองรับ Boot 4.x ตาม [เอกสารทางการ](https://docs.spring.io/spring-boot/4.0/system-requirements.html) และผล spike นี้ยังไม่แทนการทดสอบ full application/login/production deployment
 - ก่อนสร้าง skeleton ต้อง recheck patch/security updates, ทดลอง start engine บน PostgreSQL, deploy BPMN, complete task, rollback และ timer แล้วจึง pin exact versions ใน Maven/lockfile/container digest; ใช้ Boot BOM จัดการ dependency แทนกำหนด Spring/Jackson/JUnit แยกตามใจ
 - [Nuxt UI v4](https://github.com/nuxt/ui/tree/v4) รองรับ Vue/Nuxt และ Tailwind; ให้ตรึง frontend packages และ Node build runtime ที่เข้ากันได้พร้อมกันใน P0
 - PostgreSQL 17 ยังอยู่ในช่วง support ตาม [version policy](https://www.postgresql.org/support/versioning/); ใช้ minor patch ที่มี security fixes ณ วัน bootstrap และทดสอบ engine schema กับรุ่นนั้น
@@ -263,4 +265,4 @@ flowable-doctracking/
   document/                  # requirements, UX/UI, plan, decision log
 ```
 
-ผลของงานรอบนี้คือแผนพัฒนาและ stack proposal เท่านั้น ยังไม่ได้สร้าง skeleton, รัน build/test ของแอป หรือรับรองว่า candidate dependency set ใช้งานร่วมกันได้จริง การพิสูจน์ดังกล่าวเป็น deliverable แรกของ P0
+ปัจจุบันมี P0 design/contract และ compatibility spike ที่ build/test ผ่านแล้วตาม [Execution Report](p0/Execution_Report.md); ยังไม่ได้สร้าง full application skeleton หรือพิสูจน์ Google/session/email business flow ที่เป็นงาน P1 ผล spike ไม่ใช่การผ่าน G0 หรือ production readiness

@@ -1,0 +1,18 @@
+name: doctracking-p0-spike
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_DB: flowable_spike
+      POSTGRES_USER: ${SPIKE_DB_USER:?Set SPIKE_DB_USER}
+      POSTGRES_PASSWORD: ${SPIKE_DB_PASSWORD:?Set SPIKE_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    # Disposable by design: no host folder and no durable named volume.
+    tmpfs:
+      - /var/lib/postgresql/data

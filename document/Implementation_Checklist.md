@@ -2,7 +2,7 @@
 
 วันที่: 2026-11-06 (Asia/Bangkok)
 
-สถานะ: Checklist สำหรับเริ่ม implementation; ยังไม่มีรายการใดยืนยันว่าพัฒนาเสร็จ
+สถานะ: เริ่ม P0 แล้ว; technical baseline และ compatibility spike มีหลักฐานตรวจสอบ ส่วนรายการ business/infra ที่รอยืนยันยังไม่ปิด และ G0 ยังไม่ผ่าน ดู [P0 Execution Report](p0/Execution_Report.md)
 
 ## วิธีใช้และเอกสารอ้างอิง
 
@@ -40,24 +40,24 @@
 
 ### งานที่ต้องทำ
 
-- [ ] **P0-01** ทำ decision log ของ D01–D17 ระบุคำตอบ/ผู้ตัดสิน/สถานะ โดยเริ่มจาก mode, ความหมายของการจบ, bulk policy, evidence และสิทธิ์
-- [ ] **P0-02** ทำ transition matrix ของ Model A/B: register → ready/physical pickup → reserve → pickup → drop-off → receipt/processing → return พร้อม actor/guard/event/task ที่คาดไว้
-- [ ] **P0-03** ตรึงความหมาย `reported_location_step_id`, `current_route_step_id`, from/to step และจังหวะ advance; แยก A ต้นทางกับ A ส่งคืนด้วย `step_id`
-- [ ] **P0-04** ทำ permission matrix แยก ADMIN, UNIT_ADMIN, STAFF, COURIER, Coordinator และ Origin/Station context รวมสิทธิ์รายละเอียดหนังสือ/timeline/รูป
+- [x] **P0-01** ทำ decision log ของ D01–D17 ระบุคำตอบ/ผู้ตัดสิน/สถานะ โดยเริ่มจาก mode, ความหมายของการจบ, bulk policy, evidence และสิทธิ์ — [Decision Log](p0/Decision_Log.md); การทำ log เสร็จไม่เท่ากับ open decisions ได้รับอนุมัติแล้ว
+- [x] **P0-02** ทำ transition matrix ของ Model A/B: register → ready/physical pickup → reserve → pickup → drop-off → receipt/processing → return พร้อม actor/guard/event/task ที่คาดไว้ — [Design Baseline §3](p0/Design_Baseline.md)
+- [x] **P0-03** ตรึงความหมาย `reported_location_step_id`, `current_route_step_id`, from/to step และจังหวะ advance; แยก A ต้นทางกับ A ส่งคืนด้วย `step_id` — [Design Baseline §2](p0/Design_Baseline.md) และ [OpenAPI](../contracts/openapi.yaml); เป็น technical baseline ไม่ใช่การอนุมัติ policy ที่ค้าง
+- [x] **P0-04** ทำ permission matrix แยก ADMIN, UNIT_ADMIN, STAFF, COURIER, Coordinator และ Origin/Station context รวมสิทธิ์รายละเอียดหนังสือ/timeline/รูป — [Design Baseline §4](p0/Design_Baseline.md); D11/D13 ยังรอ field/image scope sign-off ก่อน API ใช้ข้อมูลจริง
 - [ ] **P0-05** ยืนยัน Unit ↔ Station mapping, จำนวน active memberships และขั้นตอน provision/ปิด Unit/ปิดผู้ใช้ที่ไม่ทิ้งงานค้าง
 - [ ] **P0-06** ยืนยัน TTL reservation, bulk all-or-nothing/partial-success, direct-transfer photo และ exception recovery โดยไม่ใช้ข้อเสนอเริ่มต้นแทนการอนุมัติ
 - [ ] **P0-07** ยืนยัน business duplicate rule ของเลขหนังสือ, UUID ภายใน, retention, SLA และ backup RPO/RTO
-- [ ] **P0-08** เตรียม Google Web OAuth client, MFU hosted-domain policy, HTTPS callback URI และอีเมล bootstrap Admin ที่อนุมัติ โดยเก็บ secret นอก repo
-- [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging
-- [ ] **P0-10** ทำ compatibility spike ของ Java/Spring Boot/Flowable/PostgreSQL: start engine, deploy BPMN, complete task, timer และ transaction rollback แล้วตรึงเวอร์ชันที่ทดสอบจริง
-- [ ] **P0-11** กำหนด transaction boundaries สำหรับ business event/outbox, workflow worker/inbox และ login session/audit/email outbox ให้ชัดก่อน implementation
-- [ ] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status`
-- [ ] **P0-13** ทบทวน UX gaps: ยืนยันรับคืน, conflict/จองหมดอายุ, upload error, sync pending, exception และหน้า Central/Unit Admin
+- [ ] **P0-08** เตรียม Google Web OAuth client, MFU hosted-domain policy, HTTPS callback URI และอีเมล bootstrap Admin ที่อนุมัติ โดยเก็บ secret นอก repo — มี [config template](../deploy/.env.example); ยังรอ client/URL/บัญชีจริงตาม [Execution Report](p0/Execution_Report.md)
+- [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging — มี template/handoff; ยังไม่ยืนยันบริการสำหรับแอปนี้และยังไม่ส่งอีเมลจริง
+- [x] **P0-10** ทำ compatibility spike ของ Java/Spring Boot/Flowable/PostgreSQL: start engine, deploy BPMN, complete task, timer และ transaction rollback แล้วตรึงเวอร์ชันที่ทดสอบจริง — [spike/result](../spikes/flowable-compatibility/README.md): Java 21.0.13, Boot 4.0.9, Flowable 8.0.0, PostgreSQL 17.11; 3 tests ผ่าน 2026-11-06, timer execute แบบ deterministic
+- [x] **P0-11** กำหนด transaction boundaries สำหรับ business event/outbox, workflow worker/inbox และ login session/audit/email outbox ให้ชัดก่อน implementation — [Design Baseline §5](p0/Design_Baseline.md); shared JDBC/engine rollback ผ่าน spike ส่วน login atomicity ต้องพิสูจน์ใน P1-15/T39
+- [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): schema validation ผ่าน 28 paths / 33 operations
+- [x] **P0-13** ทบทวน UX gaps: ยืนยันรับคืน, conflict/จองหมดอายุ, upload error, sync pending, exception และหน้า Central/Unit Admin — [Design Baseline §6](p0/Design_Baseline.md)
 - [ ] **P0-14** ยืนยัน MVP exclusions: online-only, ไม่เปลี่ยน active-instance mode อัตโนมัติ, ไม่มี QR/OCR/native app และประเมินแผนเวลาด้วย scope ล่าสุด
 
 ### Exit Gate P0
 
-- [ ] **G0** มีผล compatibility spike, decision/permission/transition matrix และ API contract ที่ใช้เริ่มงานได้; decision ที่ยังค้างระบุชัดว่าบล็อกงานใด และมีแผนจัดการก่อนเริ่มงานส่วนนั้น
+- [ ] **G0** มีผล compatibility spike, decision/permission/transition matrix และ API contract ที่ใช้เริ่มงานได้; decision ที่ยังค้างระบุชัดว่าบล็อกงานใด และมีแผนจัดการก่อนเริ่มงานส่วนนั้น — technical evidence พร้อม แต่ P0-05–09/P0-14 ยังรอยืนยัน/infra ตาม [Execution Report](p0/Execution_Report.md); เริ่มต่อได้เฉพาะงานที่ไม่ขึ้นกับคำตอบ
 
 ## P1 — Foundation, Identity และข้อมูลธุรกิจ
 
@@ -284,7 +284,7 @@
 
 | Phase | ผู้รับผิดชอบ | Commit/PR/ผลทดสอบ | วันที่ผ่าน Gate | เรื่องค้าง/ข้อยกเว้นที่อนุมัติ |
 |---|---|---|---|---|
-| P0 | — | — | — | — |
+| P0 | Codex: technical artifacts; business/infra owners รอระบุ | [Execution Report / test results](p0/Execution_Report.md) | ยังไม่ผ่าน G0 | P0-05–09/P0-14 และ field/image/exception policies ใน Decision Log |
 | P1 | — | — | — | — |
 | P2 | — | — | — | — |
 | P3 | — | — | — | — |

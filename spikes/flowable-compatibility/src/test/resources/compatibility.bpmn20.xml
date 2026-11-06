@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             targetNamespace="https://mfu.ac.th/doctracking/spike">
+  <process id="compatibility" name="P0 compatibility" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="startReview" sourceRef="start" targetRef="review"/>
+    <userTask id="review" name="Review"/>
+    <sequenceFlow id="reviewWait" sourceRef="review" targetRef="wait"/>
+    <intermediateCatchEvent id="wait">
+      <timerEventDefinition><timeDuration>PT1S</timeDuration></timerEventDefinition>
+    </intermediateCatchEvent>
+    <sequenceFlow id="waitAfter" sourceRef="wait" targetRef="afterTimer"/>
+    <userTask id="afterTimer" name="After timer"/>
+    <sequenceFlow id="afterEnd" sourceRef="afterTimer" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+</definitions>
