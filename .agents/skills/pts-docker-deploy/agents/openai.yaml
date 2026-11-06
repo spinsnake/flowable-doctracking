@@ -1,0 +1,4 @@
+interface:
+  display_name: "PTS Docker Deploy"
+  short_description: "Deploy PTS to a configurable Docker server."
+  default_prompt: "Use $pts-docker-deploy to deploy this PTS checkout to a configurable Docker server."
