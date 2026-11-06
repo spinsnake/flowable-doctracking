@@ -1,0 +1,59 @@
+name: flowable-doctracking
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_DB: doctracking
+      POSTGRES_USER: doctracking
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set a private DATABASE_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U doctracking -d doctracking"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  backend:
+    build: ./backend
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      DATABASE_URL: jdbc:postgresql://postgres:5432/doctracking
+      DATABASE_USER: doctracking
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set a private DATABASE_PASSWORD}
+      APP_URL: ${APP_URL:?Set the application origin}
+      APP_POLICY_CONFIRMED: ${APP_POLICY_CONFIRMED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_HOSTED_DOMAIN: ${GOOGLE_HOSTED_DOMAIN:-mfu.ac.th}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      SESSION_SECURE: ${SESSION_SECURE:-true}
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-30}
+      DEFAULT_TRACKING_MODE: ${DEFAULT_TRACKING_MODE:-MODEL_B}
+      RESERVATION_TTL_SECONDS: ${RESERVATION_TTL_SECONDS:-600}
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_AUTH: ${SMTP_AUTH:-true}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_SSL: ${SMTP_SSL:-false}
+      IT_CONTACT: ${IT_CONTACT:-}
+      EVIDENCE_BACKEND: ${EVIDENCE_BACKEND:-s3}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    depends_on:
+      - backend
+volumes:
+  postgres-data:

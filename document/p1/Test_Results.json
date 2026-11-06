@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-06",
+  "backend": [
+    {
+      "name": "th.ac.mfu.doctracking.IdentityIntegrationTest",
+      "tests": "11",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "25.641"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.OAuthHttpIntegrationTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "4.489"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.SmtpIntegrationTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "2.213"
+    },
+    {
+      "name": "th.ac.mfu.doctracking.TrackingIntegrationTest",
+      "tests": "13",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "5.239"
+    }
+  ],
+  "frontend": {
+    "typecheck": "passed",
+    "tests": 2,
+    "build": "passed"
+  },
+  "openapi": {
+    "paths": 35,
+    "operations": 42,
+    "validation": "passed"
+  },
+  "compose": {
+    "base": "config validation passed",
+    "dev": "config validation passed",
+    "container_build_run": "not performed; Docker Engine unavailable"
+  }
+}

@@ -1,0 +1,96 @@
+spring:
+  application:
+    name: mfu-document-tracking
+  profiles:
+    default: dev
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:55432/doctracking}
+    username: ${DATABASE_USER:doctracking}
+    password: ${DATABASE_PASSWORD:}
+  flyway:
+    enabled: true
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  session:
+    jdbc:
+      initialize-schema: never
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+  mail:
+    host: ${SMTP_HOST:127.0.0.1}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS:false}
+      mail.smtp.ssl.enable: ${SMTP_SSL:false}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: none
+  error:
+    include-message: never
+    include-stacktrace: never
+management:
+  health:
+    mail:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+flowable:
+  database-schema: ${DATABASE_SCHEMA:public}
+  database-schema-update: ${FLOWABLE_SCHEMA_UPDATE:false}
+  async-executor-activate: false
+  check-process-definitions: false
+  idm:
+    enabled: false
+  eventregistry:
+    enabled: false
+app:
+  base-url: ${APP_URL:http://localhost:3000}
+  policy-confirmed: ${APP_POLICY_CONFIRMED:false}
+  default-tracking-mode: ${DEFAULT_TRACKING_MODE:MODEL_B}
+  reservation-ttl-seconds: ${RESERVATION_TTL_SECONDS:600}
+  google-client-id: ${GOOGLE_CLIENT_ID:}
+  google-client-secret: ${GOOGLE_CLIENT_SECRET:}
+  google-hosted-domain: ${GOOGLE_HOSTED_DOMAIN:mfu.ac.th}
+  bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+  mail-enabled: ${MAIL_ENABLED:false}
+  mail-worker-enabled: ${MAIL_WORKER_ENABLED:true}
+  mail-from: ${SMTP_FROM:no-reply@example.invalid}
+  it-contact: ${IT_CONTACT:ติดต่อผู้ดูแลระบบของหน่วยงาน}
+  session-secure: ${SESSION_SECURE:true}
+  session-ttl-minutes: ${SESSION_TTL_MINUTES:30}
+  evidence:
+    backend: ${EVIDENCE_BACKEND:local}
+    root: ${EVIDENCE_ROOT:.local/evidence}
+    bucket: ${S3_BUCKET:}
+    endpoint: ${S3_ENDPOINT:}
+    region: ${AWS_REGION:ap-southeast-1}
+logging:
+  level:
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.springframework.jdbc: INFO
+    org.flowable: WARN
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+flowable:
+  database-schema-update: true
+app:
+  session-secure: ${SESSION_SECURE:false}

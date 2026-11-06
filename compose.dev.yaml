@@ -1,0 +1,23 @@
+services:
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SESSION_SECURE: "false"
+      FLOWABLE_SCHEMA_UPDATE: "true"
+      MAIL_ENABLED: "true"
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_AUTH: "false"
+      SMTP_STARTTLS: "false"
+      SMTP_SSL: "false"
+      SMTP_FROM: no-reply@example.invalid
+      EVIDENCE_BACKEND: local
+      EVIDENCE_ROOT: /data/evidence
+    volumes:
+      - evidence-data:/data/evidence
+  mailpit:
+    image: axllent/mailpit:v1.27.4
+    ports:
+      - "127.0.0.1:8025:8025"
+volumes:
+  evidence-data:

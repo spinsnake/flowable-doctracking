@@ -1,0 +1,23 @@
+{
+  "base": "http://localhost:3000",
+  "fixtureScope": "Authenticated screens use isolated browser request fixtures; no production mock provider",
+  "verified": [
+    "Google-only login desktop: no password, correct backend redirect, no overflow",
+    "/admin/units desktop: rendered, no horizontal viewport overflow",
+    "/documents desktop: rendered, no horizontal viewport overflow",
+    "/documents/40000000-0000-0000-0000-000000000001 desktop: rendered, no horizontal viewport overflow",
+    "/admin/users desktop: rendered, no horizontal viewport overflow",
+    "/worklist desktop: rendered, no horizontal viewport overflow",
+    "desktop: Unit create and number-only registration submit CSRF + idempotency headers",
+    "Google-only login mobile: no password, correct backend redirect, no overflow",
+    "/admin/units mobile: rendered, no horizontal viewport overflow",
+    "/documents mobile: rendered, no horizontal viewport overflow",
+    "/documents/40000000-0000-0000-0000-000000000001 mobile: rendered, no horizontal viewport overflow",
+    "/admin/users mobile: rendered, no horizontal viewport overflow",
+    "/worklist mobile: rendered, no horizontal viewport overflow",
+    "mobile: Unit create and number-only registration submit CSRF + idempotency headers",
+    "Unit Admin mobile: users query scoped to administered unit; no Unit Admin creation option",
+    "Origin Unit Admin without courier station grants can select server-authorized registration templates"
+  ],
+  "failures": []
+}

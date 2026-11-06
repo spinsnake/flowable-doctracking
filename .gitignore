@@ -4,3 +4,10 @@
 .env.*
 !.env.example
 *.log
+node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+backend/.local/
+test-results/
+playwright-report/

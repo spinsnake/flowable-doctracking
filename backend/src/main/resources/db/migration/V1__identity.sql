@@ -1,0 +1,22 @@
+CREATE TABLE units (id UUID PRIMARY KEY, code VARCHAR(50) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL DEFAULT FALSE, version BIGINT NOT NULL DEFAULT 0);
+CREATE TABLE users (id UUID PRIMARY KEY, email VARCHAR(320) NOT NULL UNIQUE CHECK(email = lower(btrim(email)) AND email ~ '^[^@[:space:]]+@mfu\.ac\.th$'), display_name VARCHAR(255) NOT NULL, google_sub TEXT UNIQUE, email_verified_at TIMESTAMPTZ, is_admin BOOLEAN NOT NULL DEFAULT FALSE, is_active BOOLEAN NOT NULL DEFAULT TRUE, session_version BIGINT NOT NULL DEFAULT 0, version BIGINT NOT NULL DEFAULT 0);
+CREATE TABLE unit_memberships (user_id UUID NOT NULL REFERENCES users(id), unit_id UUID NOT NULL REFERENCES units(id), role TEXT NOT NULL CHECK(role IN ('UNIT_ADMIN','STAFF')), PRIMARY KEY(user_id,unit_id));
+CREATE TABLE stations (id UUID PRIMARY KEY, unit_id UUID NOT NULL REFERENCES units(id), code VARCHAR(50) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL DEFAULT TRUE, version BIGINT NOT NULL DEFAULT 0);
+CREATE TABLE user_station_permissions (user_id UUID NOT NULL REFERENCES users(id), station_id UUID NOT NULL REFERENCES stations(id), PRIMARY KEY(user_id,station_id));
+CREATE TABLE user_capabilities (user_id UUID NOT NULL REFERENCES users(id), capability TEXT NOT NULL CHECK(capability IN ('COURIER','COORDINATOR','RESERVATION_RESOLVE')), PRIMARY KEY(user_id,capability));
+CREATE TABLE outstanding_work (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id), unit_id UUID REFERENCES units(id), kind TEXT NOT NULL, resource_id UUID NOT NULL, resolved_at TIMESTAMPTZ);
+CREATE INDEX outstanding_user_idx ON outstanding_work(user_id) WHERE resolved_at IS NULL;
+CREATE INDEX outstanding_unit_idx ON outstanding_work(unit_id) WHERE resolved_at IS NULL;
+CREATE TABLE auth_events (id UUID PRIMARY KEY, user_id UUID REFERENCES users(id), event_type TEXT NOT NULL, recorded_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE audit_events (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), actor_id UUID REFERENCES users(id), action TEXT NOT NULL, resource_id UUID, reason TEXT NOT NULL, recorded_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE notification_outbox (id UUID PRIMARY KEY, login_event_id UUID NOT NULL REFERENCES auth_events(id), type TEXT NOT NULL DEFAULT 'LOGIN', recipient TEXT NOT NULL, login_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','PROCESSING','RETRY_WAIT','ACCEPTED_BY_PROVIDER','FAILED')), attempt_count INT NOT NULL DEFAULT 0, next_retry_at TIMESTAMPTZ, last_error_code TEXT, lease_token UUID, lease_until TIMESTAMPTZ, version BIGINT NOT NULL DEFAULT 0, UNIQUE(login_event_id,type,recipient));
+CREATE INDEX notification_due_idx ON notification_outbox(status,next_retry_at);
+CREATE TABLE notification_delivery_attempts (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), notification_id UUID NOT NULL REFERENCES notification_outbox(id), attempt INT NOT NULL, status TEXT NOT NULL, error_code TEXT, started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ, UNIQUE(notification_id,attempt));
+CREATE TABLE oauth_login_requests (state TEXT PRIMARY KEY, payload BYTEA NOT NULL, expires_at TIMESTAMPTZ NOT NULL);
+CREATE TABLE auth_rate_limits (bucket TEXT PRIMARY KEY, started_at TIMESTAMPTZ NOT NULL, attempts INT NOT NULL);
+CREATE TABLE command_receipts (actor_id UUID NOT NULL REFERENCES users(id), scope TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL, response JSONB, status INT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(actor_id,scope,key));
+CREATE TABLE spring_session (primary_id CHAR(36) NOT NULL PRIMARY KEY, session_id CHAR(36) NOT NULL UNIQUE, creation_time BIGINT NOT NULL, last_access_time BIGINT NOT NULL, max_inactive_interval INT NOT NULL, expiry_time BIGINT NOT NULL, principal_name VARCHAR(100));
+CREATE INDEX spring_session_expiry_idx ON spring_session(expiry_time);
+CREATE INDEX spring_session_principal_idx ON spring_session(principal_name);
+CREATE TABLE spring_session_attributes (session_primary_id CHAR(36) NOT NULL REFERENCES spring_session(primary_id) ON DELETE CASCADE, attribute_name VARCHAR(200) NOT NULL, attribute_bytes BYTEA NOT NULL, PRIMARY KEY(session_primary_id,attribute_name));
+

@@ -2,7 +2,7 @@
 
 วันที่: 2026-11-06 (Asia/Bangkok)
 
-สถานะ: เริ่ม P0 แล้ว; technical baseline และ compatibility spike มีหลักฐานตรวจสอบ ส่วนรายการ business/infra ที่รอยืนยันยังไม่ปิด และ G0 ยังไม่ผ่าน ดู [P0 Execution Report](p0/Execution_Report.md)
+สถานะ: P1-01–25 และ G1 ผ่านในขอบเขต development/isolated integration tests แล้ว ดู [P1 Execution Report](p1/Execution_Report.md) — G0 ยังไม่ปิด เพราะ business/infra ที่รอยืนยันไม่ถือว่าได้รับอนุมัติจากการ implement; Google/SMTP/S3/HTTPS staging จริงยังเป็น P8
 
 ## วิธีใช้และเอกสารอ้างอิง
 
@@ -61,46 +61,48 @@
 
 ## P1 — Foundation, Identity และข้อมูลธุรกิจ
 
+หลักฐาน P1: [Execution Report](p1/Execution_Report.md), [ผล tests/checks](p1/Test_Results.json), [UI verification](p1/UI_Test_Results.json), [วิธีรัน](../README.md) — 29 backend tests บน PostgreSQL จริง, frontend typecheck + 2 tests + build ผ่าน; แยกขอบเขต test provider/SMTP sink จาก staging จริงตามรายงาน
+
 ### โครงสร้างและฐานข้อมูล
 
-- [ ] **P1-01** สร้าง backend Spring Boot และ frontend Nuxt/TypeScript ตามเวอร์ชันที่ผ่าน P0 พร้อม Maven Wrapper และ package lockfile
-- [ ] **P1-02** จัด Compose/Nginx สำหรับ local/staging, same-origin API, environment examples, health endpoint และ secret configuration
-- [ ] **P1-03** ตั้ง CI ให้ backend compile/test และ frontend typecheck/build พร้อม PostgreSQL integration tests
-- [ ] **P1-04** ทำ application migrations: units/users/memberships/station permissions, documents/template versions/route snapshots, reservations/legs, evidence/events, workflow outbox/inbox และ notification data
-- [ ] **P1-05** เพิ่ม constraints/indexes ที่ป้องกัน normalized email/sub ซ้ำ, active leg/reservation ซ้ำ และอ้างอิง step ไม่ถูกเรื่อง; แยก application migrations จาก Flowable-owned schema
+- [x] **P1-01** สร้าง backend Spring Boot และ frontend Nuxt/TypeScript ตามเวอร์ชันที่ผ่าน P0 พร้อม Maven Wrapper และ package lockfile
+- [x] **P1-02** จัด Compose/Nginx สำหรับ local/staging, same-origin API, environment examples, health endpoint และ secret configuration
+- [x] **P1-03** ตั้ง CI ให้ backend compile/test และ frontend typecheck/build พร้อม PostgreSQL integration tests
+- [x] **P1-04** ทำ application migrations: units/users/memberships/station permissions, documents/template versions/route snapshots, reservations/legs, evidence/events, workflow outbox/inbox และ notification data
+- [x] **P1-05** เพิ่ม constraints/indexes ที่ป้องกัน normalized email/sub ซ้ำ, active leg/reservation ซ้ำ และอ้างอิง step ไม่ถูกเรื่อง; แยก application migrations จาก Flowable-owned schema
 
 ### Google Login และ Central User
 
-- [ ] **P1-06** ทำ Google authorization-code login ผ่าน backend พร้อม state/nonce/PKCE, timeout/single-use callback และ request rate limit
-- [ ] **P1-07** ตรวจ ID-token signature/issuer/audience/expiry, `email_verified`, exact `@mfu.ac.th`, hosted domain และ allowlist; ไม่สร้าง user/role อัตโนมัติจาก callback
-- [ ] **P1-08** ทำ first-link Google sub ด้วย lock/unique constraint; ปฏิเสธ identity mismatch และไม่แก้อีเมลที่ผูกแล้วผ่านฟอร์มทั่วไป
-- [ ] **P1-09** ทำ Spring Session JDBC, regenerate session, cookie flags, CSRF, `/auth/me` และ logout; ตรวจ active user/unit/role/session version ทุก authenticated request
-- [ ] **P1-10** ทำ bootstrap Central Admin แบบ idempotent จาก configured MFU email โดยไม่ต้องมี Unit และไม่มี app password/shared account
-- [ ] **P1-11** ทำ API/UI ให้ Central Admin สร้าง Unit ที่รอ Admin และแต่งตั้ง UNIT_ADMIN พร้อมเปิด Unit แบบ atomic
-- [ ] **P1-12** ทำ API/UI เพิ่ม/แก้/ปิด STAFF; UNIT_ADMIN ทำได้เฉพาะ Unit ตน; ห้ามสร้าง Central Admin/เพิ่มสิทธิ์ตนเอง/ข้าม Unit ผ่าน API ตรง
-- [ ] **P1-13** ทำ guards รักษา Unit Admin คนสุดท้าย และตรวจงานค้างก่อนย้าย/ปิดบัญชีหรือ Unit พร้อม revoke sessions และ audit; ทดสอบซ้ำกับ leg/task จริงใน P3–P5
-- [ ] **P1-14** ทำหน้า Google-only login/profile/user status: รอเข้า Google ครั้งแรก/ผูกแล้ว/ปิดใช้ และ error เมื่อบัญชีไม่มีสิทธิ์
+- [x] **P1-06** ทำ Google authorization-code login ผ่าน backend พร้อม state/nonce/PKCE, timeout/single-use callback และ request rate limit
+- [x] **P1-07** ตรวจ ID-token signature/issuer/audience/expiry, `email_verified`, exact `@mfu.ac.th`, hosted domain และ allowlist; ไม่สร้าง user/role อัตโนมัติจาก callback
+- [x] **P1-08** ทำ first-link Google sub ด้วย lock/unique constraint; ปฏิเสธ identity mismatch และไม่แก้อีเมลที่ผูกแล้วผ่านฟอร์มทั่วไป
+- [x] **P1-09** ทำ Spring Session JDBC, regenerate session, cookie flags, CSRF, `/auth/me` และ logout; ตรวจ active user/unit/role/session version ทุก authenticated request
+- [x] **P1-10** ทำ bootstrap Central Admin แบบ idempotent จาก configured MFU email โดยไม่ต้องมี Unit และไม่มี app password/shared account
+- [x] **P1-11** ทำ API/UI ให้ Central Admin สร้าง Unit ที่รอ Admin และแต่งตั้ง UNIT_ADMIN พร้อมเปิด Unit แบบ atomic
+- [x] **P1-12** ทำ API/UI เพิ่ม/แก้/ปิด STAFF; UNIT_ADMIN ทำได้เฉพาะ Unit ตน; ห้ามสร้าง Central Admin/เพิ่มสิทธิ์ตนเอง/ข้าม Unit ผ่าน API ตรง
+- [x] **P1-13** ทำ guards รักษา Unit Admin คนสุดท้าย และตรวจงานค้างก่อนย้าย/ปิดบัญชีหรือ Unit พร้อม revoke sessions และ audit; ทดสอบซ้ำกับ leg/task จริงใน P3–P5
+- [x] **P1-14** ทำหน้า Google-only login/profile/user status: รอเข้า Google ครั้งแรก/ผูกแล้ว/ปิดใช้ และ error เมื่อบัญชีไม่มีสิทธิ์
 
 ### อีเมลแจ้งเตือน login
 
-- [ ] **P1-15** ทำ login finalization ให้ session + login audit + notification outbox commit/rollback ร่วมกันจริง และไม่รายงานสำเร็จก่อน persistence เสร็จ
-- [ ] **P1-16** ทำ template แจ้งเจ้าของบัญชีทุก login session ใหม่ มีเวลา Asia/Bangkok/ช่องทาง IT และไม่มี OAuth token/session ID/ข้อมูลหนังสือ
-- [ ] **P1-17** ทำ SMTP sender พร้อม timeout/TLS และ worker ที่มี lease/retry/backoff/attempt history; SMTP failure ไม่ยกเลิก login ที่ finalize แล้วหรือบล็อก workflow worker
-- [ ] **P1-18** กัน enqueue ซ้ำด้วย login event/type/recipient และใช้ Message-ID คงที่; refresh/me API ไม่ส่งเมลใหม่ และไม่รับรอง exactly-once SMTP
-- [ ] **P1-19** ทำสถานะ pending/processing/retry/provider-accepted/failed และ API สำหรับ Central Admin ตรวจ/retry job เดิมพร้อม audit; หน้า operations รวมตรวจอีกครั้งใน P6
+- [x] **P1-15** ทำ login finalization ให้ session + login audit + notification outbox commit/rollback ร่วมกันจริง และไม่รายงานสำเร็จก่อน persistence เสร็จ
+- [x] **P1-16** ทำ template แจ้งเจ้าของบัญชีทุก login session ใหม่ มีเวลา Asia/Bangkok/ช่องทาง IT และไม่มี OAuth token/session ID/ข้อมูลหนังสือ
+- [x] **P1-17** ทำ SMTP sender พร้อม timeout/TLS และ worker ที่มี lease/retry/backoff/attempt history; SMTP failure ไม่ยกเลิก login ที่ finalize แล้วหรือบล็อก workflow worker
+- [x] **P1-18** กัน enqueue ซ้ำด้วย login event/type/recipient และใช้ Message-ID คงที่; refresh/me API ไม่ส่งเมลใหม่ และไม่รับรอง exactly-once SMTP
+- [x] **P1-19** ทำสถานะ pending/processing/retry/provider-accepted/failed และ API สำหรับ Central Admin ตรวจ/retry job เดิมพร้อม audit; หน้า operations รวมตรวจอีกครั้งใน P6
 
 ### Registry, Evidence และ single reservation
 
-- [ ] **P1-20** ทำ Route Template/version และสร้างหนังสือพร้อม immutable route snapshot, tracking mode และ policy version; บังคับกรอกอย่างน้อยเลขหนังสือหรือชื่อเรื่อง
-- [ ] **P1-21** ทำ unit/station-scoped list/detail/timeline APIs; เมนูหนังสือของหน่วยงาน filter ตาม origin และ worklist ของ Station แยกกัน
-- [ ] **P1-22** ทำ private photo upload/validate/finalize/checksum/authorized access และ evidence links; รูปยังไม่ validated หรือไม่มีสิทธิ์ใช้ต้อง Check ไม่ได้
-- [ ] **P1-23** ทำ single-document reserve/cancel/expiry ด้วย transaction/row lock; ยังไม่เปลี่ยน custody จน Check รับ และไม่ expire `IN_TRANSIT`
-- [ ] **P1-24** ทำ idempotency key + request hash/result, optimistic version, append-only ledger/corrections และ event/outbox transaction; เอกสารเดียวกันใช้ guard เดียวกันทุกช่องทาง
-- [ ] **P1-25** ผ่าน T27–T41 ด้วย isolated test provider/mail sink และทดสอบ reservation race/idempotency/upload failure กับ PostgreSQL จริง
+- [x] **P1-20** ทำ Route Template/version และสร้างหนังสือพร้อม immutable route snapshot, tracking mode และ policy version; บังคับกรอกอย่างน้อยเลขหนังสือหรือชื่อเรื่อง
+- [x] **P1-21** ทำ unit/station-scoped list/detail/timeline APIs; เมนูหนังสือของหน่วยงาน filter ตาม origin และ worklist ของ Station แยกกัน
+- [x] **P1-22** ทำ private photo upload/validate/finalize/checksum/authorized access และ evidence links; รูปยังไม่ validated หรือไม่มีสิทธิ์ใช้ต้อง Check ไม่ได้
+- [x] **P1-23** ทำ single-document reserve/cancel/expiry ด้วย transaction/row lock; ยังไม่เปลี่ยน custody จน Check รับ และไม่ expire `IN_TRANSIT`
+- [x] **P1-24** ทำ idempotency key + request hash/result, optimistic version, append-only ledger/corrections และ event/outbox transaction; เอกสารเดียวกันใช้ guard เดียวกันทุกช่องทาง
+- [x] **P1-25** ผ่าน T27–T41 ด้วย isolated test provider/mail sink และทดสอบ reservation race/idempotency/upload failure กับ PostgreSQL จริง
 
 ### Exit Gate P1
 
-- [ ] **G1** Google/role/Unit/user/email flow มีหลักฐานทดสอบ, สร้างหนังสือพร้อม snapshot/รูปได้, ป้องกันจองซ้ำได้ และพิสูจน์ login transaction rollback; ไม่ใช้ mock auth ใน production
+- [x] **G1** Google/role/Unit/user/email flow มีหลักฐานทดสอบ, สร้างหนังสือพร้อม snapshot/รูปได้, ป้องกันจองซ้ำได้ และพิสูจน์ login transaction rollback; ไม่ใช้ mock auth ใน production — ผ่าน isolated provider/loopback SMTP/PostgreSQL + UI fixtures; ไม่ใช่ staging sign-off และไม่ปิด G0
 
 ## P2 — Flowable BPMN และ workflow synchronization
 
@@ -285,7 +287,7 @@
 | Phase | ผู้รับผิดชอบ | Commit/PR/ผลทดสอบ | วันที่ผ่าน Gate | เรื่องค้าง/ข้อยกเว้นที่อนุมัติ |
 |---|---|---|---|---|
 | P0 | Codex: technical artifacts; business/infra owners รอระบุ | [Execution Report / test results](p0/Execution_Report.md) | ยังไม่ผ่าน G0 | P0-05–09/P0-14 และ field/image/exception policies ใน Decision Log |
-| P1 | — | — | — | — |
+| P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; workflow execution เริ่ม P2 |
 | P2 | — | — | — | — |
 | P3 | — | — | — | — |
 | P4 | — | — | — | — |
