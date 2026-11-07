@@ -91,7 +91,7 @@
 - [x] **P1-16** ทำ template แจ้งเจ้าของบัญชีทุก login session ใหม่ มีเวลา Asia/Bangkok/ช่องทาง IT และไม่มี OAuth token/session ID/ข้อมูลหนังสือ
 - [x] **P1-17** ทำ SMTP sender พร้อม timeout/TLS และ worker ที่มี lease/retry/backoff/attempt history; SMTP failure ไม่ยกเลิก login ที่ finalize แล้วหรือบล็อก workflow worker
 - [x] **P1-18** กัน enqueue ซ้ำด้วย login event/type/recipient และใช้ Message-ID คงที่; refresh/me API ไม่ส่งเมลใหม่ และไม่รับรอง exactly-once SMTP
-- [x] **P1-19** ทำสถานะ pending/processing/retry/provider-accepted/failed และ API สำหรับ Central Admin ตรวจ/retry job เดิมพร้อม audit; หน้า operations รวมตรวจอีกครั้งใน P6
+- [x] **P1-19** ทำสถานะ pending/processing/retry/provider-accepted/failed และ API สำหรับ Central Admin ตรวจ/retry job เดิมพร้อม audit; หน้า operations รวมผ่าน P6-01 แล้วตาม [รายงาน](p6/Execution_Report.md); การรับเข้า MFU inbox จริงยังรอ staging
 
 ### Registry, Evidence และ single reservation
 
@@ -145,8 +145,8 @@
 |---|---|
 | Single-document READY/pickup/drop-off/receipt/return APIs และ A/B headless flow | Model B ผ่าน UI/end-to-end ใน [P3](p3/Execution_Report.md); Model A UI/default switch ผ่าน [P4](p4/Execution_Report.md) |
 | Photo validation, reservation ownership และ custody guards | Mobile viewport/file upload และ Courier 3 คนคนละ leg ผ่าน P3; physical camera/device testing ยังเป็น P8-06 |
-| Durable timer reminder feed และ technical recovery API | ส่ง reminder/escalation และทำ operations dashboard ใน P6; ยืนยัน SLA/timer policy ใน P0-07 |
-| JVM recovery, event replay และ definition version pinning | ตรวจ DB restart/host failure, deploy/rollback และ backup/restore ใน P6/P8 |
+| Durable timer reminder feed และ technical recovery API | Dashboard/technical retry/reminder feed ผ่าน P6-01–04 แล้ว; external reminder/escalation delivery และ SLA/timer/recipient policy ยังรอ P0-07/D12 |
+| JVM recovery, event replay และ definition version pinning | Native DB restart ขณะ JVM เดิมรันผ่าน P6-10 และ BPMN version coexistence ผ่าน P6-07; host crash/staging rollback/full backup restore ยังเปิดใน P6/P8 |
 | Compose config และ CI workflow | Build/start containers, remote CI และ Google/SMTP/S3/HTTPS staging จริงยังรอตรวจตามรายการส่งต่อ P1 และ P8 |
 
 ## P3 — Model B ครบเส้นทางผ่าน UI
@@ -186,7 +186,7 @@
 |---|---|
 | Model A UI, observation/reconciliation และ switch default A/B สำหรับเรื่องใหม่ | **P4-01–09/G4 ผ่านตาม baseline**; เรื่องเดิมยังคง mode/route/process version; การพบต่างจุดเปิด exception ส่วน approved resume เป็น P5/X07 |
 | Bulk, direct transfer และ exception resolution | P5-01–04 bulk ผ่าน development แล้ว; P5-05–11/G5 ยังเปิด โดย direct/exception รอยืนยัน policy ที่เกี่ยวข้อง |
-| Operations dashboard, reminder/escalation, container/CI runtime และ deploy/restore | P6 และรายการส่งต่อ P1/P2 |
+| Operations dashboard, reminder/escalation, container/CI runtime และ deploy/restore | Dashboard/reconciliation/retry ผ่าน P6 แล้ว; external alerts, container/remote CI runtime, staging rollback/full restore และรายการส่งต่อ P1/P2 ยังรอตรวจจริง |
 | Security review/scan/retest ของ release | P7/G7; ผล scope/CSRF/session guards ใน P3 ยังไม่ใช่ security sign-off |
 | Google/SMTP/HTTPS/private S3 จริง, กล้อง iOS/Android และ UAT | P8/G8; mobile viewport/file upload ใน P3 ไม่แทนการทดสอบอุปกรณ์จริง |
 | Business/infra decisions ที่ยังไม่อนุมัติ | P0-05–09/P0-14 และ G0 ยังคงเปิด |
@@ -231,7 +231,7 @@
 | Approved reconciliation/resume ของ observation exception | X07 และ P5-08; ยังห้าม Check รับจากจุดที่ข้ามไปก่อนผู้มีสิทธิ์ resolve |
 | Bulk atomicity, direct-transfer evidence และ exception policy | D08 ยืนยัน partial success 2026-11-07 และ P5-01–04 bulk ผ่าน development แล้ว; D06/X07–08/D10 ยังรอยืนยันก่อนเปิดส่วนส่งตรง/resolve/correction; ไม่มีการอนุมัติแทนเจ้าของระบบจากผล development |
 | Bulk/direct/exception implementation และ lifecycle guards | P5-01–04 เสร็จพร้อมหลักฐาน; P5-05–11/G5 ยังเปิด รวมการตรวจ outstanding-work guards กับ bulk/direct/exception จริง |
-| Operations/recovery/deploy/restore และ production security | P6–P7; real Google/SMTP/S3/HTTPS/physical mobile/UAT เป็น P8 |
+| Operations/recovery/deploy/restore และ production security | P6 development/tooling ผ่าน 7/12; retention/staging rollback/full restore/HTTPS/capacity ยังเปิด; production security เป็น P7 และ real Google/SMTP/S3/physical mobile/UAT เป็น P8 |
 
 ## P5 — Bulk, Direct Transfer และ Exception
 
@@ -290,6 +290,8 @@
 
 ### ผลตรวจ P6 ที่บันทึกไว้
 
+ตรวจเทียบกับ [P6 Test Results](p6/Test_Results.json) และ [Execution Report](p6/Execution_Report.md) วันที่ 2026-11-07; การอัปเดต checklist ครั้งนี้ใช้ผลที่บันทึกไว้ ไม่ได้รัน tests ใหม่ และไม่เปลี่ยน development evidence เป็น staging sign-off
+
 | ชุดตรวจ | ผล |
 |---|---|
 | Backend / browser | 103 backend + 1 real-browser test ผ่าน; default verify ข้าม opt-in 1 และรัน opt-in แยก; browser 28 checks ไม่นับเพิ่มเป็น tests |
@@ -316,6 +318,19 @@
 ### Exit Gate P6
 
 - [ ] **G6** มีหลักฐาน deploy/rollback/restore/reconciliation และ failure recovery; ผู้ดูแลติดตาม/retry งานที่ผิดพลาดได้โดยไม่แก้ตาราง Flowable โดยตรง
+
+### งานที่ส่งต่อหลัง P6 development
+
+| รายการที่ยังไม่ปิด | หลักฐานที่มีแล้ว | สิ่งที่ต้องเพิ่มก่อนปิด |
+|---|---|---|
+| P6-05 — Orphan/retention policy | Cleanup/dry-run, row-lock/savepoint และ 5 integration tests; ค่าเริ่มต้นปิดและไม่เลือกรูป FINALIZED/linked | Approved orphan grace, retention/legal hold และนโยบายงานลบข้อมูลแต่ละประเภท; ไม่ใช้ grace ของ staged uploads แทนอายุหลักฐาน/audit |
+| P6-08 — Staging rollback | [Rollback runbook](p6/Rollback_Runbook.md), digest/config/migration inventory และขั้นตอนตรวจ post-release data | Release/image digest และ staging จริง พร้อมผล rollback application/schema/process ที่ตรวจข้อมูลใหม่หลัง release แล้ว |
+| P6-09 — Full backup/restore | [Backup/restore runbook](p6/Backup_Restore_Runbook.md), checksum bundle/isolated restore tools และ fixture tests | pg_dump/pg_restore + private evidence/object store จริง, consistency/access checks และผล RPO/RTO จาก incident/recovery ที่วัดได้ตามเป้าหมายที่อนุมัติ; DB restart ไม่แทน full restore |
+| P6-11 — HTTPS/provider/proxy runtime | API scope/CSRF/session/correlation tests, Nginx access-log config และ loopback smoke ผ่าน | HTTPS/callback/cookie/proxy access-error-log runtime และบริการ Google/SMTP/private S3 บน staging; local HTTP ไม่ใช่ HTTPS sign-off |
+| P6-12 — Capacity | Regression suite, upload/batch guards และ bounded worklists/scans ผ่านใน development | ปริมาณเอกสาร/ผู้ใช้พร้อมกัน/ขนาดรูปและเป้าหมาย latency ที่ตกลง แล้วทดสอบโหลดพร้อมบันทึก environment/result |
+| External alerts/reminders | Admin failure feed, metrics และ durable timer reminders | Approved SLA/threshold/recipient/channel และผล delivery จริง; in-app feed ยังไม่ส่ง external notification |
+
+Docker daemon ไม่พร้อมและ native PostgreSQL runtime ที่ใช้ทดสอบไม่มี pg_dump/pg_restore จึงยังไม่มี container/staging/full restore evidence ไม่ใช้ผล Compose validation หรือ fixture tests แทนผลเหล่านี้ G6 คงเปิดและต้องตรวจ P5 business policies ที่เกี่ยวข้องแยกกัน
 
 ## P7 — Security Testing และแก้ไขช่องโหว่
 
@@ -382,15 +397,15 @@
 | T07–T10 — Model A / observation | P4 ผ่านตาม baseline: A delivery ครบและ observation gap เปิด exception/hold; approved resume ยังเป็น P5/X07 | P8 |
 | T11–T14 — Concurrency / retry / bulk / destination | P5-01–04 ผ่าน development: แย่งจองไม่ซ้ำ, retry ผลเดิม, เลือก 10 สำเร็จ 8/ปฏิเสธ 2 ตาม D08 และตรวจปลายทางรายเรื่อง ดู [P5 results](p5/Test_Results.json) | P7/P8 |
 | T15–T16 — Direct transfer / courier conflict | ยังรอ P5-05–06 และ D06; bulk ผ่านแล้วไม่ได้หมายถึง direct transfer ผ่าน | P8 |
-| T17–T19 — Default mode / snapshot | P4 ผ่าน B→A→B/current instance isolation/template version ตาม [หลักฐาน](p4/Test_Results.json) | P6/P8 |
-| T20 — Duplicate event / restart | P2 ผ่าน worker/JVM recovery และ replay ตาม [หลักฐาน](p2/Test_Results.json) | P6/P8 |
+| T17–T19 — Default mode / snapshot | P4 ผ่าน B→A→B/current instance isolation/template version และ regression ใน backend P6 ผ่านตาม [ผลทดสอบ](p6/Test_Results.json) | P8 |
+| T20 — Duplicate event / restart | P2 worker/JVM recovery ผ่าน; P6 ตรวจ retry delivery เดิม/aggregate ACK และ native DB restart ขณะ JVM เดิมรัน โดย process/task เดิมและ inbox 1 ตาม [หลักฐาน](p6/Execution_Report.md) | P8; host crash/full restore ยังไม่ตรวจ |
 | T21 — Evidence failure | P1/P3 ผ่าน corrupt PNG guards; P5 browser ตรวจเพิ่มว่าช่องรูปที่ยังไม่พร้อมบล็อก bulk Check จนรูปพร้อมหรือเอาช่องนั้นออกอย่างชัดเจน | P8 อุปกรณ์/storage จริง |
 | T22 — Receipt dispute | ยังรอ P5-07–08 และ X08; partial-success bulk ไม่ใช่การ resolve ข้อพิพาทการรับ | P8 |
 | T23–T25 — Custody / scope / route steps | P2/P3 ผ่าน; wrong courier, outsider และ wrong return occurrence ถูกปฏิเสธ | P8 |
-| T26 — Process version | P2 version pinning ผ่าน; deploy/rollback จริงตรวจต่อ P6 | P8 |
+| T26 — Process version | P6-07 deploy BPMN ใหม่ขณะ A/B เดิม active และทำต่อด้วย pinned definition/compatible delegates ผ่าน isolated engine; staging application/schema/process rollback ยังรอ P6-08 | P8 |
 | T27–T34 — Google / identity / provisioning | P1 | P7/P8 |
-| T35 — Revoke / outstanding work / last admin | P1/P3 guards และ regression เดิมผ่านในชุด P5; การตรวจ deactivation/role transfer กับ bulk/direct/exception จริงยังเปิดใน P5-10 | P6/P7/P8 |
-| T36–T41 — Login email / failure / session | P1 | P6/P7/P8 |
+| T35 — Revoke / outstanding work / last admin | P1/P3 guards และ regression เดิมผ่านในชุด P6; การตรวจ deactivation/role transfer กับ bulk/direct/exception จริงยังเปิดใน P5-10 | P7/P8 |
+| T36–T41 — Login email / failure / session | P1 regression ผ่านใน P6; เพิ่ม expired lease/stale ACK, terminal retry cap และ loopback SMTP รับ body แต่ขาด ACK โดยใช้ job/Message-ID เดิม ไม่รับรอง exactly-once | P7/P8; MFU SMTP/inbox จริงยังรอ staging |
 | T42 — Google/SMTP staging จริง | P8 | ก่อน Pilot |
 | P7-01–P7-18 — Security coverage เพิ่มเติม | P7 | Retest เมื่อแก้ไขก่อนผ่าน G8 |
 
