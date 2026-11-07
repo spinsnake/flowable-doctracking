@@ -195,6 +195,19 @@
 
 สถานะ: ผ่าน development ตาม [Execution Report](p4/Execution_Report.md), [Test Results](p4/Test_Results.json) และภาพ desktop/mobile; 69 backend tests + 1 real-browser integration ที่รวม A/B/default switch/observation ไม่มี business API mocks OIDC provider เป็น test-local และยังไม่ใช่ staging sign-off
 
+### ผลตรวจที่บันทึกไว้ล่าสุด
+
+ตรวจเทียบกับ [P4 Test Results](p4/Test_Results.json) วันที่ 2026-11-07; การอัปเดต checklist ครั้งนี้ไม่ได้รันชุดทดสอบใหม่
+
+| ชุดตรวจ | ผลที่บันทึกไว้ |
+|---|---|
+| Backend default `verify` | 69 tests ผ่าน, 0 failures/errors; browser opt-in 1 test ถูกข้ามตามเงื่อนไข |
+| Browser integration แบบ P4 opt-in | 1 test ผ่านแยกจาก default verify ครอบคลุม 25 browser checks รวม Model A/B, default switch, observation และตัวกรอง |
+| รวม backend/browser | **70 tests ผ่าน**; ไม่นับ browser checks เป็น tests เพิ่ม และไม่นับ opt-in ที่ถูกข้ามซ้ำ |
+| Frontend | typecheck, Node tests 2 tests และ static build พร้อม `index.html` ผ่าน |
+| UI smoke ด้วย API fixtures | 20 checks desktop/mobile ผ่าน; แยกจาก real-browser integration |
+| API contract | OpenAPI `0.5.0-p4` validation ผ่าน **40 paths / 47 operations** |
+
 ### งานที่ต้องทำ
 
 - [x] **P4-01** เปิด Model A worklist ที่ใช้ความหมาย “ตรวจพบเอกสารจริงก่อนรับ” โดยไม่บังคับ Unit READY หรือ receipt — T07 browser + shared photo/physical-presence flow
@@ -221,6 +234,8 @@
 | Operations/recovery/deploy/restore และ production security | P6–P7; real Google/SMTP/S3/HTTPS/physical mobile/UAT เป็น P8 |
 
 ## P5 — Bulk, Direct Transfer และ Exception
+
+สถานะ: **ยังไม่เริ่ม 0/11**; ใช้ single-document transport และ observation cases จาก P3/P4 เป็นฐานต่อได้ แต่ยังไม่มี bulk/direct-transfer/exception resolution ที่ผ่าน gate P5 นโยบาย D06/D08/X07–08 ที่เกี่ยวข้องยังต้องยืนยันตามงานส่งต่อหลัง P4
 
 ### Bulk และ concurrency
 
