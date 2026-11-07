@@ -75,11 +75,21 @@ public class TrackingStore {
         return event;
     }
     Map<String,Object> outcome(UUID operation, UUID document, UUID event, String sync) {
-        var row=document(document,false);
+        return bulkOutcome(operation,List.of(document),List.of(event),List.of(),sync);
+    }
+    Map<String,Object> bulkOutcome(UUID operation,List<UUID> documents,List<UUID> events,List<Map<String,Object>> rejected,String sync) {
         Map<String,Object> result=new LinkedHashMap<>();
-        result.put("operation_id",operation); result.put("document_ids",List.of(document)); result.put("accepted",List.of(document));
-        result.put("rejected",List.of()); result.put("event_ids",List.of(event)); result.put("process_sync_status",sync); result.put("correlation_id",operation.toString());
-        result.put("updated_states",List.of(Map.of("document_id",document,"version",row.get("version"),"business_state",row.get("business_state"),"process_sync_status",sync)));
+        result.put("operation_id",operation); result.put("batch_id",operation);
+        result.put("document_ids",documents); result.put("accepted",documents);
+        result.put("rejected",rejected); result.put("event_ids",events); result.put("process_sync_status",sync); result.put("correlation_id",operation.toString());
+        result.put("updated_states",documents.stream().map(id->{
+            var row=document(id,false);
+            return Map.of("document_id",id,"version",row.get("version"),"business_state",row.get("business_state"),"process_sync_status",sync);
+        }).toList());
         return result;
+    }
+    void storeOperation(UUID operation,UUID actor,Map<String,Object> result,List<UUID> documents) {
+        db.update("insert into tracking_operations(id,actor_id,document_id,result) values(?,?,?,?::jsonb)",operation,actor,documents.isEmpty()?null:documents.getFirst(),encode(result));
+        for(UUID document:documents) db.update("insert into operation_documents(operation_id,document_id) values(?,?) on conflict do nothing",operation,document);
     }
 }

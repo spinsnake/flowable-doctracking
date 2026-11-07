@@ -1,0 +1,162 @@
+{
+  "recorded_at": "2026-11-07T13:05:05.785695+07:00",
+  "phase": "P5 bulk only",
+  "phase_complete": false,
+  "decision": "D08 partial success confirmed by user 2026-11-07",
+  "backend_verify": {
+    "tests": 82,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 81,
+    "suites": [
+      {
+        "name": "th.ac.mfu.doctracking.BulkTransportIntegrationTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.IdentityIntegrationTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.OAuthHttpIntegrationTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.ObservationContextIntegrationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.ObservationIntegrationTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.P3BrowserIntegrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      {
+        "name": "th.ac.mfu.doctracking.SmtpIntegrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.TrackingIntegrationTest",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.TrackingWorkflowEngineIntegrationTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.WorkflowCommandsIntegrationTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.WorkflowOutboxIntegrationTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.WorkflowPolicyIntegrationTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "th.ac.mfu.doctracking.WorkflowQueriesIntegrationTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "browser_integration": {
+    "tests": 1,
+    "passed": 1,
+    "checks": [
+      "origin: signed OIDC authorization code / PKCE / real JDBC session",
+      "staff-b: signed OIDC authorization code / PKCE / real JDBC session",
+      "staff-c: signed OIDC authorization code / PKCE / real JDBC session",
+      "courier-1: signed OIDC authorization code / PKCE / real JDBC session",
+      "courier-2: signed OIDC authorization code / PKCE / real JDBC session",
+      "courier-3: signed OIDC authorization code / PKCE / real JDBC session",
+      "outsider: signed OIDC authorization code / PKCE / real JDBC session",
+      "T01: newly registered document is absent from courier queue before origin READY",
+      "Missing CSRF rejected without a workflow mutation",
+      "Unassigned signed-in actor cannot read another unit document",
+      "Real server rejects corrupt image finalization; pickup remains disabled and no pickup command or workflow transition occurs",
+      "Actual mobile 390 px corrupt upload, valid upload, photo preview and physical-presence confirmation",
+      "T03/T04 station 1: queue excludes dropoff-only and receipt-only documents; includes only after explicit READY",
+      "Leg 1: UI reservation → private photo → pickup → private photo → dropoff; destination receipt is explicit",
+      "T03/T04 station 2: queue excludes dropoff-only and receipt-only documents; includes only after explicit READY",
+      "Leg 2: UI reservation → private photo → pickup → private photo → dropoff; destination receipt is explicit",
+      "Leg 3: UI reservation → private photo → pickup → private photo → dropoff; destination receipt is explicit",
+      "Only origin membership with exact final route_step_id completes Model B; intermediate staff and initial occurrence rejected",
+      "P5 D08: real stale selection of10 commits8 immediately, reports2 already reserved, no hidden retry",
+      "P5:8 actual pickups with one shared photo,8 same-destination dropoffs,8 explicit unit receipts; all real Flowable ACKs",
+      "P5: additional unfinished photo blocks command until explicitly removed; batch review exposes all selected document IDs/count",
+      "Origin downloads all six event-linked private PNGs; unrelated signed-in user receives 404",
+      "Logout revokes the real JDBC session; desktop and 390 px mobile have no horizontal overflow"
+    ],
+    "failures": [],
+    "scope": "Real browser + native HTTP gateway + Spring HTTP + PostgreSQL + Flowable; only external OIDC provider is test-local"
+  },
+  "frontend": {
+    "typecheck": "passed",
+    "build": "passed",
+    "node_tests_passed": 2,
+    "ui_smoke_checks": 20,
+    "ui_smoke_failures": []
+  },
+  "openapi": {
+    "version": "0.6.0-p5-bulk",
+    "paths": 40,
+    "operations": 47,
+    "validation": "passed"
+  },
+  "completed_checklist": [
+    "P5-01",
+    "P5-02",
+    "P5-03",
+    "P5-04"
+  ],
+  "pending_decisions": [
+    "D06",
+    "X07",
+    "X08"
+  ],
+  "gate": "G5 open"
+}

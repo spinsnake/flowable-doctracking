@@ -140,12 +140,12 @@ Outbox ไม่ได้ทำให้ส่ง message exactly-once โดย
 - ทำ single-document reservation ตั้งแต่ foundation; ใช้ document row lock และ constraint ให้ active leg ≤ 1 และ active reservation item ≤ 1 ต่อเรื่อง
 - Direct transfer และ courier reservation ใช้ lock/guard ของ document เดียวกัน เพราะ unique index คนละตารางไม่ป้องกันการชนข้ามช่องทาง
 - Expiry worker กับ Check รับต้องแข่งผ่าน lock เดียวกัน; ใช้ server time และห้ามหมดอายุงาน `IN_TRANSIT`
-- Bulk reserve เสนอ all-or-nothing สำหรับชุดที่เลือก: ถ้ามี conflict คืน `409` พร้อมรายการปัญหาและให้ผู้ใช้เลือกใหม่; lock document IDs ตามลำดับคงที่เพื่อลด deadlock
+- Bulk ใช้ partial success ตาม D08 ที่ผู้ใช้ยืนยัน 2026-11-07: เรื่องที่ผ่าน guard สำเร็จทันที พร้อม `accepted` และ `rejected` ที่มีเหตุผลรายเรื่อง เช่น มีผู้รับหรือจองไปแล้ว; ไม่ย้อนเรื่องที่สำเร็จ เมื่อเลือก 10 เรื่องและ conflict 2 เรื่อง อีก 8 เรื่องสำเร็จ; lock document IDs ตามลำดับคงที่เพื่อลด deadlock
 - การรับ/ยืนยันรับเฉพาะบางเรื่องต้องเป็นการเลือกชุดใหม่อย่างชัดเจน และสร้าง event ต่อเรื่อง; ไม่เงียบตัดบางเรื่องจากชุดเดิม
 - Bulk pickup ต้องมาจาก station เดียว; bulk drop-off ต้องเป็นปลายทางเดียวและ leg เป็นของ courier ที่ทำรายการ
 - รูปหนึ่งใช้ร่วมหลาย event ใน batch ได้ตาม policy แต่ต้องแสดงรายชื่อ/จำนวนให้ตรวจและแนบภาพเพิ่มได้
 
-ข้อเสนอ bulk นี้ต้องตกลง D08 ก่อนใช้จริง หากเลือก partial-success API ต้องประกาศผลต่อรายการและ transaction boundary ให้ชัด ไม่ผสมสองนโยบายโดยผู้ใช้ไม่รู้
+Bulk ใช้ transaction เดียวต่อคำสั่งพร้อม savepoint รายเรื่อง: conflict ของเรื่องหนึ่งไม่ย้อนเรื่องที่ผ่านแล้ว แต่ความล้มเหลวของ transaction/ระบบยัง rollback ทั้งคำสั่งได้; request-level authorization/validation ที่ไม่ผ่านไม่เริ่ม batch ส่วน retry ด้วย idempotency key เดิมคืนผลเดิม ผู้ใช้เลือกเฉพาะเรื่องที่ถูกปฏิเสธส่งใหม่อย่างชัดเจน ห้ามส่งเรื่องที่สำเร็จซ้ำโดยอัตโนมัติ
 
 ### 4.4 รูปหลักฐานและสิทธิ์
 
@@ -233,7 +233,7 @@ CI: backend compile+tests → frontend typecheck/build+tests ที่เกี�
 | D01–D05: default/mode override/คำว่าจบ/รับคืน | B default, ไม่ override หรือเปลี่ยน active mode, A/B ใช้คำจบแยกกัน, B ต้องต้นทางรับคืน |
 | D06: รูป direct transfer | ตกลง required/optional ตามข้อมูลจริง; ปกติ unit receipt ไม่บังคับรูป |
 | D07: Reservation TTL | เก็บจากเวลาเดินจริง; config ได้; เสนอทดลอง 10 นาทีใน staging เท่านั้นและไม่ถือว่าเป็น policy ที่อนุมัติ |
-| D08: Bulk atomicity | all-or-nothing สำหรับชุดที่ submit, conflict แล้วเลือกชุดใหม่; ยืนยันว่าตรงความต้องการ partial receipt |
+| D08: Bulk atomicity | ยืนยัน partial success 2026-11-07: บันทึกเรื่องที่พร้อมทันที พร้อมเหตุผลรายการ conflict และให้เลือกเฉพาะรายการปฏิเสธใหม่ |
 | D09/D12: Dispute และ SLA | คง pending + exception; timer แจ้งเตือน ไม่ auto-accept; ต้องระบุผู้รับผิดชอบและเวลา |
 | D10: Route change / mid-leg handoff | MVP ปกติไม่แก้ route เอง; กรณีจำเป็นใช้ coordinator resolution ที่ออกแบบและทดสอบ หากต้องมี self-service approval/handoff เต็มรูปแบบให้เพิ่ม estimate |
 | D11/D13: ขอบเขตเรื่อง/รูปและเอกสารอ่อนไหว | origin-only list, station worklist ตามงาน, courier ตามสิทธิ์/leg; ยืนยัน field/image visibility และ admin scope |

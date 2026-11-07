@@ -10,7 +10,7 @@ export interface Page<T> { items: T[]; next_cursor?: string | null }
 export interface Reservation { id: string; owner_user_id: string; station_id: string; items: {document_id: string; route_step_id: string; document_version: number; tracking_mode: string; business_state: string; process_sync_status: string; latest_operation_id?: string}[]; status: string; expires_at: string; version: number }
 export interface CourierLeg { id: string; document_id: string; from_step_id: string; to_step_id: string; from_station_id: string; to_station_id: string; document_version: number; tracking_mode: string; process_sync_status: string; latest_operation_id?: string; started_at: string }
 export interface Notification { id: string; recipient: string; status: string; attempt_count: number; version: number; last_error_code?: string; next_retry_at?: string }
-export interface CommandResult { document_ids: string[]; operation_id: string; process_sync_status: string }
+export interface CommandResult { document_ids: string[]; operation_id: string; batch_id?: string; process_sync_status: string; accepted?: string[]; rejected?: {document_id:string;code:string;message:string}[] }
 export interface WorkflowPolicy { default_tracking_mode: 'MODEL_A'|'MODEL_B'; version: number; changed_at?: string; changed_by?: string; change_reason?: string }
 export interface ObservationContext { document_id: string; document_version: number; tracking_mode: string; business_state: string; process_sync_status: string; latest_operation_id?: string; current_route_step_id: string; reported_location_step_id?: string; route_steps: RouteStep[]; can_observe: boolean }
 export const modelText = (mode: string) => mode === 'MODEL_A' ? 'Model A' : mode === 'MODEL_B' ? 'Model B' : mode

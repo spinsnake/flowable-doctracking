@@ -1,14 +1,14 @@
 openapi: 3.0.3
 info:
   title: MFU Document Tracking Application API
-  version: 0.5.0-p4
+  version: 0.6.0-p5-bulk
   description: |
     Application contract with P1 identity/registry, P2 workflow commands, P3 UI read models and
-    P4 default-policy/Model A observations. Bulk/direct transfer/exception resolution remain P5 scope;
+    P4 default-policy/Model A observations and P5 partial-success bulk. Direct transfer/exception resolution remain P5 scope;
     their presence in this specification is not implementation evidence. See contracts/README.md for scope.
     Flowable is embedded and accessed internally through Java APIs; no engine REST endpoint is exposed here.
     Business decisions D01-D17 remain subject to the decision log and owner approval. Reservation TTL,
-    bulk atomicity, direct-transfer evidence, retention and SLA values are not approved by this contract.
+    direct-transfer evidence, retention and SLA values are not approved by this contract. D08 partial success was confirmed on 2026-11-07.
 
     All authenticated requests recheck active user/unit, membership, station scope and session version.
     ADMIN means Central Admin. Coordinator is an explicitly granted operational capability, not an implicit role.
@@ -19,7 +19,7 @@ info:
     nonce and PKCE. Business/provisioning commands require Idempotency-Key scoped to actor + operation + resource,
     with request hash: replay returns the original status/body and key reuse with different input returns 409.
     Validate authorization on replay as well. A document command includes expected_version per item; stale versions
-    return 409 without creating a new event. Actor and recorded_at come from the session/server, never request input.
+    reject that item without creating its event. Singleton commands return 409; multi-item commands report accepted/rejected per item. Actor and recorded_at come from the session/server, never request input.
 
     A 202 means the business transaction committed but workflow synchronization is PENDING; it does not mean the next
     Flowable task is available. Clients read the operation/document until APPLIED; FAILED_RETRYABLE is visible and
@@ -774,10 +774,14 @@ paths:
       operationId: reservePickup
       summary: Courier reserves one or more documents at a station
       description: |
-        P1 implements exactly one item; multi-item requests return 422 SINGLE_ITEM_REQUIRED until P5 policy is approved.
-        Lock documents in deterministic order and guard direct-transfer concurrency. One active reservation/leg per document.
-        Bulk atomicity follows the approved decision; proposed all-or-nothing rejects the entire selection on any conflict.
-        No silent subset. TTL comes from server policy; expiry never releases IN_TRANSIT custody.
+        Submit 1 to 100 unique documents from one source station. D08 uses partial success: valid items commit immediately;
+        rejected items carry sanitized per-item codes/messages. For ten selected documents and two already reserved,
+        eight succeed and two are reported as conflicts. Never roll back the eight because of the two business conflicts.
+        One transaction with per-item savepoints; a system/transaction failure still rolls back the command.
+        Document locks follow UUID string order. One active reservation/leg/direct channel per document.
+        A multi-item request with zero accepted returns 200 CommandResult and creates no empty reservation.
+        A singleton conflict retains 409. Replay returns the same accepted/rejected without repeating writes.
+        TTL comes from server policy; expiry/cancel releases every remaining active member, never IN_TRANSIT custody.
       parameters:
         - {$ref: '#/components/parameters/Csrf'}
         - {$ref: '#/components/parameters/Idempotency'}
@@ -787,6 +791,11 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/BatchCommand'}
       responses:
+        '200':
+          description: Every selected item rejected; no reservation created. Inspect rejected per document.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommandResult'}
         '201':
           description: Reservation committed; this is not a physical pickup.
           content:
@@ -837,7 +846,7 @@ paths:
       tags: [Tracking]
       operationId: checkReceive
       summary: Reservation owner records pickup with validated photo
-      description: Model A requires physical presence confirmation. Model B requires ready. Unexpired owner reservation and matching route steps/versions are mandatory.
+      description: Both models require physical presence confirmation and finalized evidence. Model B requires ready. Unexpired owner reservation and matching route steps/versions are mandatory. Partial-success items consume only accepted reservation members; the reservation remains active for other members. A shared station-context photo is linked to each accepted event; document-bound photos cannot authorize other documents.
       parameters:
         - {$ref: '#/components/parameters/Csrf'}
         - {$ref: '#/components/parameters/Idempotency'}
@@ -865,7 +874,7 @@ paths:
       tags: [Tracking]
       operationId: checkDropoff
       summary: Active leg owner records drop-off with validated photo
-      description: Submit only documents at the same actual destination station; items identify active legs. Model B opens receipt/return confirmation, Model A never synthesizes it.
+      description: Submit only documents at the same actual destination station; items identify actor-owned active legs. D08 partial success returns accepted/rejected for each item, including wrong-destination/owner conflicts. Model B opens receipt/return confirmation, Model A never synthesizes it.
       parameters:
         - {$ref: '#/components/parameters/Csrf'}
         - {$ref: '#/components/parameters/Idempotency'}
@@ -898,7 +907,7 @@ paths:
       tags: [Tracking]
       operationId: confirmReceipt
       summary: Model B destination unit confirms selected receipts
-      description: Own station only; no mandatory photo for normal receipt. Final-origin return uses confirm-return. Partial selection is explicit, never silently removed from a submitted batch.
+      description: Own station only; no mandatory photo for normal receipt. Final-origin return uses confirm-return. D08 partial success is explicit through accepted/rejected; rejected items are never silently removed from a submitted batch.
       parameters:
         - {$ref: '#/components/parameters/Csrf'}
         - {$ref: '#/components/parameters/Idempotency'}
@@ -1064,13 +1073,13 @@ paths:
       tags: [Operations]
       operationId: getWorkflowDelivery
       summary: Central Admin reads technical delivery status for an original operation ID
-      description: Returns only operation_id/status/attempts/next_retry_at/last_error_code/version; no document titles, photos, token or provider exception data.
+      description: Returns operation_id, aggregate process_sync_status and deliveries with id/event_id/document_id/status/attempts/next_retry_at/last_error_code/version; no document titles, photos, token or provider exception data. Singleton results retain status/version compatibility fields. Bulk results require an explicit delivery selection for retry.
       responses:
         '200':
           description: Persisted technical delivery status.
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/WorkflowDelivery'}
+              schema: {$ref: '#/components/schemas/WorkflowOperation'}
         default: {$ref: '#/components/responses/Error'}
   /admin/workflow-operations/{id}/retry:
     parameters:
@@ -1079,7 +1088,7 @@ paths:
       tags: [Operations]
       operationId: retryWorkflowDelivery
       summary: Central Admin retries the existing failed delivery with an audited reason
-      description: Does not create a new business event or replace the original operation. expected_version is the workflow delivery version from the technical status endpoint. Requires RETRY_WAIT or DEAD_LETTER; immutable invalid events remain rejected on retry.
+      description: Does not create a new business event or replace the original operation. expected_version is the workflow delivery version from the technical status endpoint. For a multi-delivery operation delivery_id is mandatory (422 DELIVERY_REQUIRED); a delivery outside the operation returns 404. Requires RETRY_WAIT or DEAD_LETTER; immutable invalid events remain rejected on retry.
       parameters:
         - {$ref: '#/components/parameters/Csrf'}
         - {$ref: '#/components/parameters/Idempotency'}
@@ -1092,6 +1101,7 @@ paths:
               additionalProperties: false
               required: [expected_version, reason]
               properties:
+                delivery_id: {type: string, format: uuid, description: Required for a multi-delivery operation; select exactly one persisted delivery.}
                 expected_version: {type: integer, format: int64, minimum: 0}
                 reason: {type: string, minLength: 1, maxLength: 1000}
       responses:
@@ -1498,7 +1508,7 @@ components:
       required: [station_id, items]
       properties:
         station_id: {type: string, format: uuid, description: Must match path station where present.}
-        items: {type: array, minItems: 1, uniqueItems: true, items: {$ref: '#/components/schemas/BatchItem'}, description: 'No repeated document_id; server validates selection uniqueness.'}
+        items: {type: array, minItems: 1, maxItems: 100, uniqueItems: true, items: {$ref: '#/components/schemas/BatchItem'}, description: 'No repeated document_id; server validates selection uniqueness.'}
     EvidenceBatchCommand:
       allOf:
         - {$ref: '#/components/schemas/BatchCommand'}
@@ -1526,10 +1536,26 @@ components:
         version: {type: integer, format: int64, minimum: 0}
         operation_id: {type: string, format: uuid}
         correlation_id: {type: string}
+    WorkflowOperation:
+      type: object
+      required: [operation_id, process_sync_status, deliveries]
+      properties:
+        operation_id: {type: string, format: uuid}
+        process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
+        deliveries: {type: array, items: {$ref: '#/components/schemas/WorkflowDelivery'}}
+        status: {type: string, description: Present for a singleton delivery only.}
+        attempts: {type: integer, minimum: 0}
+        next_retry_at: {type: string, format: date-time}
+        last_error_code: {type: string, nullable: true}
+        version: {type: integer, format: int64, minimum: 0}
     WorkflowDelivery:
       type: object
       required: [status, attempts, next_retry_at, version]
       properties:
+        id: {type: string, format: uuid, description: Recovery endpoint delivery selector.}
+        delivery_id: {type: string, format: uuid, description: Operation polling delivery selector.}
+        event_id: {type: string, format: uuid}
+        document_id: {type: string, format: uuid}
         operation_id: {type: string, format: uuid}
         status: {type: string, enum: [PENDING, RETRY_WAIT, APPLIED, DEAD_LETTER]}
         attempts: {type: integer, minimum: 0}
@@ -1541,6 +1567,7 @@ components:
       required: [operation_id, document_ids, accepted, rejected, event_ids, updated_states, process_sync_status, correlation_id]
       properties:
         operation_id: {type: string, format: uuid}
+        batch_id: {type: string, format: uuid, description: Alias of operation_id for per-document batch events.}
         document_ids: {type: array, items: {type: string, format: uuid}}
         accepted: {type: array, items: {type: string, format: uuid}}
         rejected: {type: array, items: {$ref: '#/components/schemas/ItemError'}}
@@ -1557,7 +1584,14 @@ components:
               process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
         process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
         correlation_id: {type: string}
-        workflow_sync: {$ref: '#/components/schemas/WorkflowDelivery'}
+        deliveries: {type: array, items: {$ref: '#/components/schemas/WorkflowDelivery'}}
+        workflow_sync:
+          oneOf:
+            - {$ref: '#/components/schemas/WorkflowDelivery'}
+            - type: object
+              required: [deliveries]
+              properties:
+                deliveries: {type: array, items: {$ref: '#/components/schemas/WorkflowDelivery'}}
     ItemError:
       type: object
       required: [document_id, code, message]

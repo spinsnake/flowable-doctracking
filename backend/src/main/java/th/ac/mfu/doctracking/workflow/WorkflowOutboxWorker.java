@@ -75,7 +75,7 @@ public class WorkflowOutboxWorker {
         String hash=hash(row.get("action").toString(),payload);
         var consumed=db.queryForList("select payload_hash from workflow_inbox where event_id=?",event);
         if(!consumed.isEmpty()) {
-            require(hash.equals(consumed.getFirst().get("payload_hash")));ack(row,ledger);return;
+            require(hash.equals(consumed.getFirst().get("payload_hash")));ack(row);return;
         }
         var doc=db.queryForMap("select * from documents where id=?",document);
         require(document.equals(uuid(payload,"document_id")) && doc.get("tracking_mode").equals(payload.get("tracking_mode"))
@@ -107,7 +107,7 @@ public class WorkflowOutboxWorker {
             }
             engine.apply(instance,document,action,step,from,to,leg);
         }
-        ack(row,ledger);
+        ack(row);
     }
     private String expectedTask(String action,UUID document,UUID step) {
         return switch(action) {
@@ -119,13 +119,14 @@ public class WorkflowOutboxWorker {
             default -> throw new Rejected();
         };
     }
-    private void ack(Map<String,Object> row,Map<String,Object> ledger) {
+    private void ack(Map<String,Object> row) {
         db.update("update workflow_outbox set status='APPLIED',attempts=attempts+1,last_error_code=null,version=version+1 where id=?",row.get("id"));
         db.update("""
             update documents set process_sync_status=case when exists(
               select 1 from workflow_outbox where document_id=? and status<>'APPLIED') then 'PENDING' else 'APPLIED' end where id=?
             """,row.get("document_id"),row.get("document_id"));
-        db.update("update tracking_operations set result=jsonb_set(result,'{process_sync_status}','\"APPLIED\"'::jsonb) where id=?",ledger.get("operation_id"));
+        // Operation status is derived from all of its deliveries when read. Updating a shared
+        // bulk result here would acknowledge it after the first document (and race other workers).
     }
     private void recordFailure(UUID outbox,String code,boolean permanent) {
         tx.executeWithoutResult(status->{

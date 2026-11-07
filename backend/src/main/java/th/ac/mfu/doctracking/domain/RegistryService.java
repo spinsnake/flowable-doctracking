@@ -108,19 +108,34 @@ public class RegistryService {
     @SuppressWarnings("unchecked")
     public Map<String,Object> operation(Actor actor,UUID id) {
         var row=s.one("select * from tracking_operations where id=?",id);
-        var document=s.document(TrackingStore.id(row,"document_id"),false);
-        if(!actor.id().equals(row.get("actor_id"))) s.visible(actor,document);
         var result=s.decode(row.get("result").toString());
-        var deliveries=s.db.queryForList("select o.status,o.attempts,o.available_at as next_retry_at,o.last_error_code,o.version from workflow_outbox o join document_events e on e.id=o.event_id where e.operation_id=?",id);
-        String sync=document.get("process_sync_status").toString();
-        if(!deliveries.isEmpty()) {
-            var delivery=deliveries.getFirst();
-            sync=switch(delivery.get("status").toString()) {case "APPLIED"->"APPLIED";case "RETRY_WAIT","DEAD_LETTER"->"FAILED_RETRYABLE";default->"PENDING";};
-            result.put("workflow_sync",delivery);
+        var documents=s.db.queryForList("select d.* from operation_documents od join documents d on d.id=od.document_id where od.operation_id=? order by d.id",id);
+        if(!actor.id().equals(row.get("actor_id"))) {
+            // Failed selections may include unknown or out-of-scope UUIDs; only their submitter sees them.
+            if(documents.isEmpty() || !((List<?>)result.getOrDefault("rejected",List.of())).isEmpty())
+                throw new ApiException(404,"NOT_FOUND","Resource not found");
+            for(var document:documents) s.visible(actor,document);
         }
+        var deliveries=s.db.queryForList("select o.id as delivery_id,o.event_id,o.document_id,o.status,o.attempts,o.available_at as next_retry_at,o.last_error_code,o.version from workflow_outbox o join document_events e on e.id=o.event_id where e.operation_id=? order by o.document_id,o.sequence",id);
+        String sync=aggregateSync(deliveries,result.getOrDefault("process_sync_status","APPLIED").toString());
+        if(!deliveries.isEmpty()) {
+            result.put("workflow_sync",deliveries.size()==1?deliveries.getFirst():Map.of("deliveries",deliveries));
+            result.put("deliveries",deliveries);
+        }
+        for(var state:(List<Map<String,Object>>)result.getOrDefault("updated_states",List.of())) {
+            var perDocument=deliveries.stream().filter(d->d.get("document_id").toString().equals(state.get("document_id").toString())).toList();
+            String localSync=documents.stream().filter(d->d.get("id").toString().equals(state.get("document_id").toString()))
+                    .map(d->d.get("process_sync_status").toString()).findFirst().orElse(state.get("process_sync_status").toString());
+            state.put("process_sync_status",aggregateSync(perDocument,localSync));
+        }
+        if(deliveries.isEmpty() && !documents.isEmpty()) sync=documents.stream().anyMatch(d->"FAILED_RETRYABLE".equals(d.get("process_sync_status")))?"FAILED_RETRYABLE":documents.stream().anyMatch(d->"PENDING".equals(d.get("process_sync_status")))?"PENDING":"APPLIED";
         result.put("process_sync_status",sync);
-        for(var state:(List<Map<String,Object>>)result.getOrDefault("updated_states",List.of())) state.put("process_sync_status",sync);
         return result;
+    }
+    private static String aggregateSync(List<Map<String,Object>> deliveries,String fallback) {
+        if(deliveries.isEmpty()) return fallback;
+        if(deliveries.stream().anyMatch(d->Set.of("RETRY_WAIT","DEAD_LETTER").contains(d.get("status")))) return "FAILED_RETRYABLE";
+        return deliveries.stream().allMatch(d->"APPLIED".equals(d.get("status")))?"APPLIED":"PENDING";
     }
     public CommandResult attachEvidence(Actor actor,UUID document,EvidenceAttachment input) {
         var doc=s.document(document,true);s.visible(actor,doc);

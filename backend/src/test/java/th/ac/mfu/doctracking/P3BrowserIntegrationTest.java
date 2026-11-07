@@ -68,6 +68,7 @@ class P3BrowserIntegrationTest extends DatabaseTest {
 
     @Test void modelBTraversesThreeStationsThroughRealBrowserAndOriginAloneCompletes() throws Exception {
         boolean p4="true".equals(System.getenv("P4_BROWSER_ENABLED"));
+        boolean p5="true".equals(System.getenv("P5_BROWSER_ENABLED"));
         var stations=new ArrayList<UUID>();var units=new ArrayList<UUID>();var users=new ArrayList<UUID>();
         String run=UUID.randomUUID().toString().substring(0,8);
         for(int i=0;i<3;i++) {
@@ -103,9 +104,9 @@ class P3BrowserIntegrationTest extends DatabaseTest {
         if(!Files.isDirectory(root.resolve("frontend")))root=root.getParent();
         assertTrue(Files.isRegularFile(root.resolve("frontend/.output/public/index.html")),
                 "Build frontend first; the static SPA entrypoint must exist");
-        Path output=root.resolve(p4?"frontend/test-results/p4":"frontend/test-results/p3");Files.createDirectories(output);
+        Path output=root.resolve(p5?"frontend/test-results/p5-bulk":p4?"frontend/test-results/p4":"frontend/test-results/p3");Files.createDirectories(output);
         Path fixtures=output.resolve("fixtures.json");
-        json.writeValue(fixtures.toFile(),Map.of("emails",emails,"stations",stations,"template",templateId,"backendPort",port,"run",run,"p4",p4));
+        json.writeValue(fixtures.toFile(),Map.of("emails",emails,"stations",stations,"template",templateId,"backendPort",port,"run",run,"p4",p4,"p5",p5));
         var scheduler=Executors.newSingleThreadScheduledExecutor();
         // The same production outbox worker applies committed events asynchronously; no APPLIED or ready state is seeded.
         scheduler.scheduleWithFixedDelay(()->{try{for(int i=0;i<25&&worker.processOne();i++){} }catch(Exception e){throw new IllegalStateException(e);}},0,100,TimeUnit.MILLISECONDS);
@@ -114,7 +115,7 @@ class P3BrowserIntegrationTest extends DatabaseTest {
             var builder=new ProcessBuilder("node",root.resolve("frontend/tests/p3-e2e.mjs").toString(),fixtures.toString()).directory(root.toFile());
             builder.redirectErrorStream(true).redirectOutput(output.resolve("browser.log").toFile());
             process=builder.start();
-            assertTrue(process.waitFor(240,TimeUnit.SECONDS),"Browser timed out; see frontend/test-results/p3/browser.log");
+            assertTrue(process.waitFor(p5?360:240,TimeUnit.SECONDS),"Browser timed out; see frontend/test-results/p3/browser.log");
             assertEquals(0,process.exitValue(),()->{try{return Files.readString(output.resolve("browser.log"));}catch(Exception e){return e.toString();}});
             Map<?,?> result=json.readValue(output.resolve("report.json").toFile(),Map.class);
             UUID document=UUID.fromString(result.get("document_id").toString());
@@ -143,6 +144,17 @@ class P3BrowserIntegrationTest extends DatabaseTest {
                 assertEquals("WAIT_ORIGIN_READY",db.queryForObject("select business_state from documents where id=?",String.class,newB));
                 assertEquals(2,db.queryForObject("select count(*) from audit_events where action='WORKFLOW_POLICY_CHANGED'",Integer.class));
                 assertTrue(PKCE_VERIFIED.get()>=8);
+            }
+            if(p5) {
+                var bulkDocuments=(List<?>)result.get("bulk_document_ids");
+                assertEquals(8,bulkDocuments.size());
+                for(Object value:bulkDocuments) {
+                    UUID bulkDocument=UUID.fromString(value.toString());
+                    assertEquals("UNIT_PROCESSING",db.queryForObject("select business_state from documents where id=?",String.class,bulkDocument));
+                    assertEquals(1,db.queryForObject("select count(*) from courier_legs where document_id=?",Integer.class,bulkDocument));
+                    assertEquals(2,db.queryForObject("select count(*) from event_evidence x join document_events e on e.id=x.event_id where e.document_id=?",Integer.class,bulkDocument));
+                    assertEquals(1,db.queryForObject("select count(*) from document_events where document_id=? and event_type='UNIT_RECEIPT_CONFIRMED'",Integer.class,bulkDocument));
+                }
             }
             for(UUID user:users) {
                 assertEquals(1,db.queryForObject("select count(*) from auth_events where user_id=? and event_type='LOGIN_SUCCEEDED'",Integer.class,user));

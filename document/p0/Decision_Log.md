@@ -29,7 +29,7 @@
 | D05 | B จบหลังต้นทางยืนยันรับที่ return step เท่านั้น | BASELINE / รอยืนยัน business sign-off | เจ้าของงานธุรการ | P2-03, P3-06, P5-06: ต้องได้ต้นแบบรับคืนที่ใช้ตรวจ UAT |
 | D06 | เสนอให้ direct dispatch ต้องแนบรูป; unit receipt ปกติไม่บังคับรูป | ข้อเสนอ / รอยืนยัน | เจ้าของงานธุรการ + ผู้ดูแลข้อมูล | P1-22 ส่วน policy, P5-05: ตรึง required/optional และกรณียกเว้น |
 | D07 | เสนอทดลอง TTL จอง 10 นาทีใน staging; ใช้ server time และหมดอายุก่อน pickup เท่านั้น | ข้อเสนอ / รอยืนยัน | หัวหน้าผู้เดินหนังสือ | P1-23, P5-04: ค่า TTL จริงและผลทดลอง; ห้าม expire custody |
-| D08 | เสนอ bulk all-or-nothing ต่อชุด submit; conflict แล้วเลือกใหม่อย่างชัดเจน | ข้อเสนอ / รอยืนยัน; มีข้อขัดกันในเอกสารเดิม | เจ้าของงานธุรการ + หัวหน้าผู้เดินหนังสือ | P5-01–04: Requirements §17 เสนอ per-item แต่ Plan §4.3 เสนอ atomic; ต้องเลือกนโยบายเดียวก่อน bulk implementation |
+| D08 | Bulk ใช้ partial success: เรื่องที่ผ่าน guard สำเร็จทันที เรื่องที่ conflict ถูกปฏิเสธแยกรายเรื่อง เช่น เลือก 10 เรื่อง สำเร็จ 8 และแจ้งอีก 2 ว่ามีผู้รับหรือจองไปแล้ว; ไม่ rollback เรื่องที่สำเร็จ | ยืนยันโดยผู้ใช้ใน session วันที่ 2026-11-07 | ผู้ใช้ผู้กำหนดความต้องการใน session | P5-01–04: ผล accepted/rejected และเหตุผลรายเรื่อง; retry คำสั่งเดิมต้องไม่ทำซ้ำ; ล็อกแต่ละ document ตามลำดับคงที่; เลือกเฉพาะรายการที่ปฏิเสธใหม่ได้อย่างชัดเจน |
 | D09 | Drop-off ไม่ auto-receipt; คง pending และเปิด dispute/exception ได้ | BASELINE / รอยืนยัน owner/escalation | เจ้าของงานธุรการ | P3-05, P5-07–08: ผู้รับผิดชอบและวิธี resolve; ห้าม timer รับแทน |
 | D10 | เปลี่ยน route/ส่งต่องานกลาง leg ต้องมีผู้อนุมัติและ correction audit; ไม่เปิด arbitrary edit | ข้อเสนอ / รอยืนยัน flow ที่อยู่ใน MVP | เจ้าของระบบ + Coordinator | P5-08–09: ถ้าไม่อนุมัติ flow ให้ปฏิเสธชัด; ไม่สร้าง handoff อัตโนมัติ |
 | D11 | Origin-only list; Station worklist ตาม step/scope; Courier ตาม scope/leg; Admin role ไม่ได้เห็นรูปทั้งหมดโดยปริยาย | BASELINE / รอยืนยัน field/image scope | เจ้าของข้อมูล + เจ้าของระบบ | P1-21–22, P7-08: อนุมัติ permission matrix และ field redaction |
@@ -72,3 +72,4 @@
 | วันที่ | การเปลี่ยนแปลง | ผู้ทำ/หลักฐาน |
 |---|---|---|
 | 2026-11-06 | สร้าง log ครบ D01–D17, X01–X09 และ dependency blockers จากเอกสารเดิม | P0 documentation; รอผู้มีอำนาจเติมการตัดสินจริง |
+| 2026-11-07 | ยืนยัน D08 เป็น partial success แทนข้อเสนอ all-or-nothing และปรับ Requirements/Plan ให้ตรงกัน | คำสั่งผู้ใช้: “ให้ 8 เรื่องสำเร็จทันที แล้วแจ้งว่าอีกสองมีผู้รับไปแล้ว” |

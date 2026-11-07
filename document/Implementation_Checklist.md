@@ -2,7 +2,7 @@
 
 วันที่: 2026-11-07 (Asia/Bangkok)
 
-สถานะ: P1–P4/G1–G4 ผ่านเฉพาะ development/isolated integration ตาม baseline ดู [P4 Execution Report](p4/Execution_Report.md) — backend 69 tests และ browser integration A/B 1 test ผ่าน; Admin สลับ B→A→B มีผลเฉพาะเรื่องใหม่ Model A จบการติดตามแยกจาก B รับคืนต้นทาง การพบข้ามจุดเปิด exception/พักงานตาม X07; G0 ยังรอยืนยัน business/infra และ staging จริงยังเป็น P8
+สถานะ: P1–P4/G1–G4 ผ่านเฉพาะ development/isolated integration ตาม baseline; P5 bulk **P5-01–04 เสร็จ 4/11** ตาม D08 partial success ที่ผู้ใช้ยืนยัน ดู [P5 Execution Report](p5/Execution_Report.md) — backend 81 tests และ browser B/bulk 1 test ผ่าน มีกรณีเลือก 10 สำเร็จ 8 อีก 2 conflict จริง; ส่วน direct/exception ยังรอยืนยัน D06/X07–08 และ G5 ยังไม่ผ่าน; G0 ยังรอ business/infra และ staging จริงยังเป็น P8
 
 ## วิธีใช้และเอกสารอ้างอิง
 
@@ -29,7 +29,7 @@
 | P2 | BPMN A/B ที่ execute ได้ และ workflow outbox/inbox ที่กู้คืนได้ | P1 data/transaction/authorization | 10/10 · G2 ผ่านเฉพาะ backend/headless development |
 | P3 | Model B ครบ A → B → C → A ผ่าน UI จริง | P1–P2 | 10/10 · G3 ผ่านเฉพาะ isolated development/browser |
 | P4 | Model A และ switch default A/B โดยไม่กระทบเรื่องเดิม | P2–P3 | 9/9 · G4 ผ่านเฉพาะ development ตาม conservative observation baseline |
-| P5 | Bulk, direct transfer และ exception resolution | P3–P4 และ policy ที่ยืนยันแล้ว | 0/11 · ยังไม่เริ่ม |
+| P5 | Bulk, direct transfer และ exception resolution | P3–P4 และ policy ที่ยืนยันแล้ว | 4/11 · Bulk ผ่าน development; G5 รอ direct/exception |
 | P6 | Operations, reconciliation, deploy/rollback, backup/restore | Workflow และ integration ที่เกี่ยวข้อง | 0/12 · ยังไม่เริ่ม |
 | P7 | Security testing, แก้ช่องโหว่และทดสอบซ้ำ | P0–P6 และ staging ที่ทดสอบได้ | 0/18 · ยังไม่เริ่ม |
 | P8 | Staging verification, UAT และ Pilot | P0–P7 ผ่านตาม scope | 0/10 · ยังไม่เริ่ม |
@@ -47,7 +47,7 @@
 - [x] **P0-03** ตรึงความหมาย `reported_location_step_id`, `current_route_step_id`, from/to step และจังหวะ advance; แยก A ต้นทางกับ A ส่งคืนด้วย `step_id` — [Design Baseline §2](p0/Design_Baseline.md) และ [OpenAPI](../contracts/openapi.yaml); เป็น technical baseline ไม่ใช่การอนุมัติ policy ที่ค้าง
 - [x] **P0-04** ทำ permission matrix แยก ADMIN, UNIT_ADMIN, STAFF, COURIER, Coordinator และ Origin/Station context รวมสิทธิ์รายละเอียดหนังสือ/timeline/รูป — [Design Baseline §4](p0/Design_Baseline.md); D11/D13 ยังรอ field/image scope sign-off ก่อน API ใช้ข้อมูลจริง
 - [ ] **P0-05** ยืนยัน Unit ↔ Station mapping, จำนวน active memberships และขั้นตอน provision/ปิด Unit/ปิดผู้ใช้ที่ไม่ทิ้งงานค้าง
-- [ ] **P0-06** ยืนยัน TTL reservation, bulk all-or-nothing/partial-success, direct-transfer photo และ exception recovery โดยไม่ใช้ข้อเสนอเริ่มต้นแทนการอนุมัติ
+- [ ] **P0-06** ยืนยัน TTL reservation, bulk all-or-nothing/partial-success, direct-transfer photo และ exception recovery โดยไม่ใช้ข้อเสนอเริ่มต้นแทนการอนุมัติ — D08 ยืนยัน partial success แล้ว 2026-11-07; TTL/D06/X07–08 ยังรอยืนยันตาม Decision Log
 - [ ] **P0-07** ยืนยัน business duplicate rule ของเลขหนังสือ, UUID ภายใน, retention, SLA และ backup RPO/RTO
 - [ ] **P0-08** เตรียม Google Web OAuth client, MFU hosted-domain policy, HTTPS callback URI และอีเมล bootstrap Admin ที่อนุมัติ โดยเก็บ secret นอก repo — มี [config template](../deploy/.env.example); ยังรอ client/URL/บัญชีจริงตาม [Execution Report](p0/Execution_Report.md)
 - [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging — มี template/handoff และ loopback SMTP test ผ่านแล้ว; ยังไม่ยืนยัน relay จริงหรือทดสอบรับอีเมลถึง MFU inbox
@@ -229,20 +229,20 @@
 | งานค้าง | รายการที่ติดตามต่อ |
 |---|---|
 | Approved reconciliation/resume ของ observation exception | X07 และ P5-08; ยังห้าม Check รับจากจุดที่ข้ามไปก่อนผู้มีสิทธิ์ resolve |
-| Bulk atomicity, direct-transfer evidence และ exception policy | P0-06/D06/D08/X07–08 ก่อนเปิด P5; ไม่มีการอนุมัติแทนเจ้าของระบบจากผล development |
+| Bulk atomicity, direct-transfer evidence และ exception policy | D08 ยืนยัน partial success 2026-11-07 และเริ่มพัฒนา bulk ได้; D06/X07–08 ยังรอยืนยันก่อนเปิดส่วนส่งตรง/resolve; ไม่มีการอนุมัติแทนเจ้าของระบบจากผล development |
 | Bulk/direct/exception implementation และ lifecycle guards | P5-01–11/G5 |
 | Operations/recovery/deploy/restore และ production security | P6–P7; real Google/SMTP/S3/HTTPS/physical mobile/UAT เป็น P8 |
 
 ## P5 — Bulk, Direct Transfer และ Exception
 
-สถานะ: **ยังไม่เริ่ม 0/11**; ใช้ single-document transport และ observation cases จาก P3/P4 เป็นฐานต่อได้ แต่ยังไม่มี bulk/direct-transfer/exception resolution ที่ผ่าน gate P5 นโยบาย D06/D08/X07–08 ที่เกี่ยวข้องยังต้องยืนยันตามงานส่งต่อหลัง P4
+สถานะ: **P5-01–04 เสร็จ 4/11 เฉพาะ bulk development** ตาม [P5 Report](p5/Execution_Report.md); ใช้ partial success เรื่องที่ผ่านสำเร็จทันที พร้อม accepted/rejected และเหตุผลรายเรื่อง เช่น เลือก 10 สำเร็จ 8 อีก 2 มีผู้รับหรือจองไปแล้ว ไม่ย้อน 8 เรื่องที่สำเร็จ ส่วนส่งตรง D06 และ exception resolution X07–08 ยังรอยืนยันแยกกัน และ G5 ยังไม่ผ่าน
 
 ### Bulk และ concurrency
 
-- [ ] **P5-01** ทำ multi-select/reserve/pickup ตาม bulk policy ที่ยืนยันแล้ว พร้อมผลต่อรายการและ explicit reselect เมื่อ conflict; ไม่เงียบตัดเรื่องจากชุด
-- [ ] **P5-02** รับรวมเฉพาะ Station เดียวและส่งรวมเฉพาะปลายทางเดียว; ตรวจ Courier owner และ guard ของแต่ละ document แยกกัน
-- [ ] **P5-03** ทำ batch/evidence-event links ใช้ภาพร่วมได้ตาม policy แต่ยังมี event ต่อเรื่อง พร้อมตรวจรายชื่อ/จำนวนและแนบภาพเพิ่ม
-- [ ] **P5-04** ล็อก document IDs ตามลำดับคงที่และทดสอบ simultaneous reserve/check, TTL expiry แข่ง pickup, bulk conflict และ request retry
+- [x] **P5-01** ทำ multi-select/reserve/pickup ตาม bulk policy ที่ยืนยันแล้ว พร้อมผลต่อรายการและ explicit reselect เมื่อ conflict; ไม่เงียบตัดเรื่องจากชุด — API/UI เลือก 1–100 เรื่องและแสดง accepted/rejected; browser เลือก 10 ชนจองจริง 2 สำเร็จ 8 โดยไม่ย้อนรายการสำเร็จ; retry คืนผลเดิมตาม [P5 Report](p5/Execution_Report.md)
+- [x] **P5-02** รับรวมเฉพาะ Station เดียวและส่งรวมเฉพาะปลายทางเดียว; ตรวจ Courier owner และ guard ของแต่ละ document แยกกัน — ตรวจ shared source/common destination และ owner ราย leg; mixed destination ปฏิเสธแยกรายเรื่อง และ browser รับ–ส่ง–หน่วยงานยืนยันรับ 8 เรื่องจริง
+- [x] **P5-03** ทำ batch/evidence-event links ใช้ภาพร่วมได้ตาม policy แต่ยังมี event ต่อเรื่อง พร้อมตรวจรายชื่อ/จำนวนและแนบภาพเพิ่ม — batch_id/operation_documents, รูป Station ร่วมเชื่อม event แยกต่อเรื่อง; UI ทวนรายชื่อ/จำนวน เพิ่มรูปและบล็อกจนรูปครบ; DB/browser ตรวจ link จริง
+- [x] **P5-04** ล็อก document IDs ตามลำดับคงที่และทดสอบ simultaneous reserve/check, TTL expiry แข่ง pickup, bulk conflict และ request retry — deterministic UUID string locks, overlapping reversed batches, simultaneous pickup/replay, expiry แข่ง pickup และ SQL constraint rollback รายเรื่อง ผ่าน 8 bulk tests; aggregate ACK/selected retry/privacy ผ่าน real-engine tests
 
 ### Direct transfer และข้อขัดข้อง
 
@@ -366,7 +366,7 @@
 | P2 | Codex implementation; independent core review | [47 backend tests + JVM recovery](p2/Execution_Report.md) | 2026-11-06 เฉพาะ backend/headless G2 | G0 ยังเปิด; timer 24h เป็น dev baseline/durable feed ยังไม่ส่ง email; UI A/B ผ่าน P3/P4 แล้ว ส่วน operations/staging เป็น P6–P8 |
 | P3 | Codex implementation; scoped API/UI review | [54 backend/browser tests + UI smoke + screenshots](p3/Execution_Report.md) | 2026-11-07 เฉพาะ development G3 | G0 ยังเปิด; real Google/SMTP/S3/HTTPS/physical camera และ UAT เป็น P8; Model A/default switch ผ่าน P4 แล้ว |
 | P4 | Codex implementation; independent scoped policy/observation/UI review | [70 backend/browser tests + screenshots](p4/Execution_Report.md) | 2026-11-07 เฉพาะ development G4 ตาม baseline | G0/X07 ยังเปิด; observation ข้ามจุดพักรอ approved resolution P5; bulk/direct/exception P5, operations/security/staging P6–P8 |
-| P5 | — | — | — | — |
+| P5 | Codex implementation; independent bulk/recovery/privacy review | [81 backend + 1 real-browser test / screenshots](p5/Execution_Report.md) | ยังไม่ผ่าน G5; P5-01–04 ผ่าน development 2026-11-07 | D08 partial success ยืนยันแล้ว; D06/X07–08 และ P5-05–11 ยังเปิด |
 | P6 | — | — | — | — |
 | P7 | — | — | — | — |
 | P8 | — | — | — | — |

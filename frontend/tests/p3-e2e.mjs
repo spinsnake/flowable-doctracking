@@ -26,7 +26,7 @@ const gateway=createServer(async(req,res)=>{
 })
 await new Promise((ok,bad)=>{gateway.once('error',bad);gateway.listen(62916,'127.0.0.1',ok)})
 const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'chrome'})
-let documentId,modelAId,observationId,newBId
+let documentId,modelAId,observationId,newBId;let bulkDocumentIds=[]
 async function get(context,path){const response=await context.request.get(base+'/api/v1'+path);assert.equal(response.status(),200,`${path}: ${await response.text()}`);return response.json()}
 async function mutate(context,path,body,csrf=true){const headers={'Idempotency-Key':crypto.randomUUID()};if(csrf)headers['X-CSRF-TOKEN']=(await get(context,'/auth/csrf')).token;return context.request.post(base+'/api/v1'+path,{headers,data:body})}
 async function login(role){
@@ -213,6 +213,48 @@ try{
   await origin.page.reload();await origin.page.getByRole('heading',{name:'P3 browser A → B → C → A '+fixture.run,exact:true}).waitFor();await origin.page.locator('.timeline li').filter({hasText:'ต้นทางยืนยันรับคืน'}).waitFor();await screenshot(origin.page,'completed-desktop')
   await origin.page.setViewportSize({width:390,height:844});await screenshot(origin.page,'completed-mobile')
   await staffB.page.setViewportSize({width:390,height:844});await work(staffB,fixture.stations[1]);await screenshot(staffB.page,'station-mobile')
+  if(fixture.p5){
+    const mainDocumentId=documentId,bulkDocs=[]
+    for(let i=0;i<10;i++){
+      const created=await mutate(origin.context,'/documents',{title:`P5 bulk ${i+1} ${fixture.run}`,origin_station_id:fixture.stations[0],template_id:fixture.template,template_version:1})
+      assert.equal(created.status(),202);documentId=(await created.json()).document_ids[0]
+      let row=await state(origin,'WAIT_ORIGIN_READY')
+      assert.equal((await mutate(origin.context,`/documents/${documentId}/ready`,{route_step_id:row.current_route_step_id,expected_version:row.version})).status(),202)
+      row=await state(origin,'READY_FOR_PICKUP');bulkDocs.push(row)
+    }
+    await courier1.page.setViewportSize({width:1440,height:1000});await work(courier1,fixture.stations[0],true)
+    for(const row of bulkDocs)await courier1.page.getByRole('checkbox',{name:`เลือกหนังสือ ${row.id}`,exact:true}).check()
+    // A second real courier reserves two after the first screen loaded: no API interception.
+    const contested=await mutate(courier2.context,'/courier/reservations',{station_id:fixture.stations[0],items:bulkDocs.slice(8).map(row=>({document_id:row.id,route_step_id:row.current_route_step_id,expected_version:row.version}))})
+    assert.equal(contested.status(),201)
+    const reservedResponse=courier1.page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/v1/courier/reservations')
+    await courier1.page.getByTestId('bulk-submit').click();const reservedHttp=await reservedResponse;assert.equal(reservedHttp.status(),201)
+    const reserved=await reservedHttp.json();assert.equal(reserved.accepted.length,8);assert.equal(reserved.rejected.length,2);assert.ok(reserved.rejected.every(r=>r.code==='RESERVATION_CONFLICT'))
+    bulkDocumentIds=reserved.accepted
+    await courier1.page.getByTestId('batch-result').getByRole('heading',{name:'สำเร็จ 8 เรื่อง · ไม่สำเร็จ 2 เรื่อง',exact:true}).waitFor()
+    assert.equal(await courier1.page.getByTestId('batch-result').getByText(/มีผู้จองไปแล้ว/).count(),2)
+    await screenshot(courier1.page,'bulk-conflict-desktop');await courier1.page.setViewportSize({width:390,height:844});await screenshot(courier1.page,'bulk-conflict-mobile')
+    checks.push('P5 D08: real stale selection of10 commits8 immediately, reports2 already reserved, no hidden retry')
+    await courier1.page.goto(base+'/reservations')
+    for(const id of bulkDocumentIds)await courier1.page.getByRole('checkbox',{name:`เลือกรับหนังสือ ${id}`,exact:true}).check()
+    await courier1.page.getByTestId('bulk-pickup-open').click();await photo(courier1.page);await courier1.page.getByTestId('physical-presence').check()
+    await courier1.page.getByRole('button',{name:'แนบภาพเพิ่ม',exact:true}).click();assert.equal(await courier1.page.getByTestId('courier-pickup').isDisabled(),true)
+    await courier1.page.getByRole('button',{name:'นำช่องภาพสุดท้ายออก',exact:true}).click();await courier1.page.getByTestId('courier-pickup').click()
+    for(const id of bulkDocumentIds){documentId=id;await state(origin,'IN_TRANSIT')}
+    await courier1.page.goto(base+'/legs')
+    for(const id of bulkDocumentIds)await courier1.page.getByRole('checkbox',{name:`เลือกส่งหนังสือ ${id}`,exact:true}).check()
+    await courier1.page.getByTestId('bulk-dropoff-open').click();await photo(courier1.page);await courier1.page.getByTestId('courier-dropoff').click()
+    for(const id of bulkDocumentIds){documentId=id;await state(origin,'PENDING_UNIT_RECEIPT')}
+    await staffB.page.setViewportSize({width:1440,height:1000});await work(staffB,fixture.stations[1])
+    for(const id of bulkDocumentIds)await staffB.page.getByRole('checkbox',{name:`เลือกหนังสือ ${id}`,exact:true}).check()
+    await staffB.page.getByTestId('bulk-submit').click()
+    for(const id of bulkDocumentIds){documentId=id;await state(origin,'UNIT_PROCESSING')}
+    await staffB.page.getByTestId('batch-result').getByRole('heading',{name:'สำเร็จ 8 เรื่อง · ไม่สำเร็จ 0 เรื่อง',exact:true}).waitFor()
+    await screenshot(staffB.page,'bulk-receipt-desktop');await staffB.page.setViewportSize({width:390,height:844});await screenshot(staffB.page,'bulk-receipt-mobile')
+    checks.push('P5:8 actual pickups with one shared photo,8 same-destination dropoffs,8 explicit unit receipts; all real Flowable ACKs')
+    checks.push('P5: additional unfinished photo blocks command until explicitly removed; batch review exposes all selected document IDs/count')
+    documentId=mainDocumentId
+  }
   const timeline=await get(origin.context,`/documents/${documentId}/timeline`)
   assert.equal(timeline.items.filter(e=>e.event_type==='ORIGIN_RETURN_CONFIRMED').length,1)
   assert.equal(timeline.items.filter(e=>e.event_type==='COURIER_PICKED_UP').length,3)
@@ -227,7 +269,7 @@ try{
   assert.ok(logout.ok());assert.equal((await outsider.context.request.get(base+'/api/v1/auth/me')).status(),401)
   checks.push('Logout revokes the real JDBC session; desktop and 390 px mobile have no horizontal overflow')
   assert.deepEqual(failures,[])
-  await writeFile(join(output,'report.json'),JSON.stringify({document_id:documentId,model_a_id:modelAId,observation_id:observationId,new_b_id:newBId,scope:'Real browser + native HTTP gateway + Spring HTTP + PostgreSQL + Flowable; only external OIDC provider is test-local',checks,failures},null,2))
+  await writeFile(join(output,'report.json'),JSON.stringify({document_id:documentId,bulk_document_ids:bulkDocumentIds,model_a_id:modelAId,observation_id:observationId,new_b_id:newBId,scope:'Real browser + native HTTP gateway + Spring HTTP + PostgreSQL + Flowable; only external OIDC provider is test-local',checks,failures},null,2))
   console.log(JSON.stringify({document_id:documentId,checks,failures},null,2))
 }catch(error){
   for(let i=0;i<contexts.length;i++){const page=contexts[i].pages()[0];if(page)await page.screenshot({path:join(output,`failure-${i}.png`),fullPage:true}).catch(()=>{})}
