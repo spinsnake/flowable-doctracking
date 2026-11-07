@@ -1,4 +1,4 @@
-# Application API contract — P0/P1/P2
+# Application API contract — P0/P1/P2/P3
 
 [`openapi.yaml`](openapi.yaml) เป็น OpenAPI 3.0.3 ของ application backend ใช้ตกลง payload, security boundary และ error หลักฐาน implementation อยู่ใน [P1 report](../document/p1/Execution_Report.md) การมี endpoint ใน contract ไม่ถือว่า endpoint นั้นพัฒนาแล้ว
 
@@ -19,6 +19,16 @@ P2 เพิ่ม single-document ready/check-receive/check-dropoff/confirm-rec
 
 `GET /admin/workflow-operations/{operation_id}` ให้ Central Admin ดูเฉพาะ technical status/version และ `POST .../retry` requeue delivery เดิมพร้อม CSRF/idempotency/version/reason/audit ไม่สร้าง business event ใหม่ Operation polling รายงาน sync ของ operation นั้น ไม่ใช้สถานะของคำสั่งถัดไปทับคำสั่งที่ apply แล้ว
 
-UI ของ business workflow เป็น P3/P4 ส่วน direct transfer, observation, default-policy API และ bulk ยังเป็น P4/P5 ยังไม่เปิดใช้งาน P2 รับหนึ่ง item ต่อคำสั่ง batch-shaped payload; P1 tests เดิมที่ seed ready/APPLIED เป็น fixtures แยกจาก P2 tests ที่ execute Flowable จริง
+P3 เชื่อม UI ของ single-document business workflow ส่วน direct transfer, observation, default-policy API และ bulk ยังเป็น P4/P5 ยังไม่เปิดใช้งาน P2 รับหนึ่ง item ต่อคำสั่ง batch-shaped payload; P1 tests เดิมที่ seed ready/APPLIED เป็น fixtures แยกจาก P2 tests ที่ execute Flowable จริง
 
 UI ไม่แก้ tracking mode ของเรื่องเดิม การใช้รูปในคำสั่งต้องผ่าน finalize และสิทธิ์ owner/context ก่อน; เก็บรูปแบบ private โดยดาวน์โหลดผ่าน backend ที่ตรวจสิทธิ์ทุกครั้ง
+
+
+P3 adds authenticated read models for the single-document UI:
+
+- `GET /stations/{id}/unit-worklist` requires active membership of that station's unit and an explicit station grant. MODEL_B rows identify the exact route occurrence in `action_route_step_id`; `action` is `CONFIRM_RECEIPT`, `READY`, `CONFIRM_RETURN` or null. Pending/failed synchronization stays visible with no mutation action. MODEL_A has no unit receipt/ready queue.
+- `GET /courier/legs` returns only the current courier's active legs with an active assigned destination station/unit. It exposes exact from/to step and station IDs, current document version and synchronization, without title/number or full document details.
+- `GET /courier/reservations` remains owner-only and now checks current capability/station/unit access. Each item carries current `document_version`/`expected_version` for pickup and historical `reserved_version`; the top-level reservation `version` still guards cancellation.
+- The origin-authorized timeline includes `actor_display_name` for display and retains immutable `actor_id` for audit. Display names may change; system events have no invented actor.
+
+The pending G0 field-visibility policy remains fail closed: non-origin unit worklists redact title/number, and full detail, timeline and attached evidence remain origin-scoped. Membership in an inactive origin unit does not reveal those fields. Query actions are UI hints; mutation endpoints independently enforce authorization, state, exact occurrence, version and evidence.

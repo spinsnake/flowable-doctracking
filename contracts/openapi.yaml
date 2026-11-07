@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: MFU Document Tracking Application API
-  version: 0.3.0-p2
+  version: 0.4.0-p3
   description: |
-    Application contract with P1 identity/registry and P2 single-document workflow endpoints.
-    Bulk/direct/observation/default-policy operations remain future P3-P5 scope; their presence
+    Application contract with P1 identity/registry, P2 workflow commands and P3 single-document UI read models.
+    Bulk/direct/observation/default-policy operations remain future P4-P5 scope; their presence
     in this specification is not implementation evidence. See contracts/README.md for the P1 boundary.
     Flowable is embedded and accessed internally through Java APIs; no engine REST endpoint is exposed here.
     Business decisions D01-D17 remain subject to the decision log and owner approval. Reservation TTL,
@@ -628,7 +628,7 @@ paths:
     get:
       tags: [Tracking]
       operationId: getStationWorklist
-      summary: Station task/worklist for authorized Unit or Courier
+      summary: Eligible pickup worklist for an explicitly authorized Courier
       description: Model B pickup requires ready; Model A list reports last-known position, not a guarantee of physical availability.
       parameters:
         - {$ref: '#/components/parameters/Cursor'}
@@ -640,12 +640,67 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/DocumentPage'}
         default: {$ref: '#/components/responses/Error'}
+  /stations/{id}/unit-worklist:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Tracking]
+      operationId: getUnitStationWorklist
+      summary: Model B receipt, processing and readiness work at an exact station occurrence
+      description: |
+        Requires active membership of the station's unit and an explicit station grant. Central Admin and
+        Courier capabilities alone grant no access. Includes pending synchronization as read-only rows.
+        action_route_step_id identifies the pending receipt occurrence or current processing occurrence;
+        repeated visits to the same station never collapse into one step. action is null while sync is
+        not APPLIED or custody prevents action. Title and document_number remain null outside active origin
+        membership while the G0 field-visibility policy is pending. Model A has no unit receipt/ready queue.
+      parameters:
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Scoped unit queue with optional server-authorized next action.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/UnitWorklistItem'}}
+                  next_cursor: {type: string, format: uuid, nullable: true}
+        default: {$ref: '#/components/responses/Error'}
+  /courier/legs:
+    get:
+      tags: [Tracking]
+      operationId: listOwnActiveCourierLegs
+      summary: Courier resumes own active custody at its exact destination occurrence
+      description: |
+        At most 100 active legs owned by the current user, ordered by started_at then id. Requires current
+        COURIER capability and an active assigned destination station/unit. Revoked destination permission
+        removes the leg from this list; it does not transfer custody. Other couriers and Central Admin
+        receive no implicit ownership. Includes pending sync for read-only display; no book title/number.
+      responses:
+        '200':
+          description: Own active destination-scoped custody.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/CourierLeg'}}
+        default: {$ref: '#/components/responses/Error'}
   /courier/reservations:
     get:
       tags: [Tracking]
       operationId: listOwnReservations
       summary: Courier reads own active single-document reservations
-      description: At most 100 most recent active reservations. ACTIVE may be past expires_at until the expiry worker records expiration; clients never treat that as pickup authorization.
+      description: |
+        At most 100 most recent own active reservations in currently assigned active stations/units, requiring
+        current COURIER capability. ACTIVE may be past expires_at until the expiry worker records expiration;
+        clients never treat that as pickup authorization. Item expected_version/document_version are the current
+        document version for pickup; reserved_version retains the historical value captured at reservation.
+        Top-level version remains the reservation version for cancellation. Includes no book title/number.
       responses:
         '200':
           description: Own active reservation metadata.
@@ -1214,7 +1269,45 @@ components:
         version: {type: integer, format: int64, minimum: 0}
         operation_id: {type: string, format: uuid}
         correlation_id: {type: string}
-        items: {type: array, items: {$ref: '#/components/schemas/BatchItem'}}
+        items: {type: array, items: {$ref: '#/components/schemas/ReservationItem'}}
+    ReservationItem:
+      type: object
+      required: [document_id, route_step_id, reserved_version, expected_version, document_version, business_state, process_sync_status, latest_operation_id, tracking_mode]
+      properties:
+        document_id: {type: string, format: uuid}
+        route_step_id: {type: string, format: uuid}
+        reserved_version: {type: integer, format: int64, minimum: 0, description: Historical document version immediately after reservation.}
+        expected_version: {type: integer, format: int64, minimum: 0, description: Current document version for the next pickup command.}
+        document_version: {type: integer, format: int64, minimum: 0}
+        business_state: {$ref: '#/components/schemas/BusinessState'}
+        process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
+        latest_operation_id: {type: string, format: uuid, nullable: true}
+        tracking_mode: {$ref: '#/components/schemas/TrackingMode'}
+    CourierLeg:
+      type: object
+      additionalProperties: false
+      required: [id, document_id, from_step_id, to_step_id, from_station_id, to_station_id, started_at, document_version, process_sync_status, business_state, tracking_mode, latest_operation_id]
+      properties:
+        id: {type: string, format: uuid}
+        document_id: {type: string, format: uuid}
+        from_step_id: {type: string, format: uuid}
+        to_step_id: {type: string, format: uuid}
+        from_station_id: {type: string, format: uuid}
+        to_station_id: {type: string, format: uuid}
+        started_at: {type: string, format: date-time}
+        document_version: {type: integer, format: int64, minimum: 0}
+        process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
+        business_state: {$ref: '#/components/schemas/BusinessState'}
+        tracking_mode: {$ref: '#/components/schemas/TrackingMode'}
+        latest_operation_id: {type: string, format: uuid, nullable: true}
+    UnitWorklistItem:
+      allOf:
+        - {$ref: '#/components/schemas/Document'}
+        - type: object
+          required: [action_route_step_id, action]
+          properties:
+            action_route_step_id: {type: string, format: uuid}
+            action: {type: string, nullable: true, enum: [CONFIRM_RECEIPT, READY, CONFIRM_RETURN, null], description: Null means status-only; never authorize a mutation from the client alone.}
     TrackingMode: {type: string, enum: [MODEL_A, MODEL_B]}
     ProcessSyncStatus: {type: string, enum: [APPLIED, PENDING, FAILED_RETRYABLE]}
     BusinessState:
@@ -1363,7 +1456,7 @@ components:
         id: {type: string, format: uuid}
         owner_user_id: {type: string, format: uuid}
         station_id: {type: string, format: uuid}
-        items: {type: array, items: {$ref: '#/components/schemas/BatchItem'}}
+        items: {type: array, items: {$ref: '#/components/schemas/ReservationItem'}}
         status: {type: string, enum: [ACTIVE, CANCELLED, EXPIRED, CONSUMED]}
         expires_at: {type: string, format: date-time, description: Server time based on configured policy; no hard-coded TTL approval.}
         version: {type: integer, format: int64, minimum: 0}
@@ -1432,6 +1525,7 @@ components:
         to_step_id: {type: string, format: uuid, nullable: true}
         recorded_at: {type: string, format: date-time}
         actor_id: {type: string, format: uuid, nullable: true, description: Null for unobserved transfer; never invent actor/time.}
+        actor_display_name: {type: string, nullable: true, description: Current display name for the stable audit actor_id; null for a system event.}
         evidence_ids: {type: array, items: {type: string, format: uuid}, description: IDs are not public URLs; evidence access must authorize document/event/upload.}
     WorkflowPolicy:
       type: object

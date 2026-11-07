@@ -49,7 +49,7 @@ try {
       else if(path===`/documents/${docId}`)body=doc
       else if(path===`/documents/${docId}/timeline`)body={items:[{event_id:'event-ui',event_type:'DOCUMENT_REGISTERED',sequence:1,recorded_at:'2026-11-06T06:00:00Z',actor_id:userId,evidence_ids:[]}],next_cursor:null}
       else if(path==='/admin/login-notifications')body={items:[],next_cursor:null}
-      else if(path===`/stations/${stationId}/worklist`)body={items:[doc],next_cursor:null}
+      else if(path===`/stations/${stationId}/worklist`||path===`/stations/${stationId}/unit-worklist`)body={items:[{...doc,action:null,action_route_step_id:'s1'}],next_cursor:null}
       else if(path==='/courier/reservations')body={items:[],next_cursor:null}
       else {failures.push(`Unexpected API ${request.method()} ${path}`);return route.fulfill({status:404,json:{code:'FIXTURE_ROUTE_MISSING'}})}
       await route.fulfill({status:200,json:body})
@@ -63,6 +63,20 @@ try {
       await authenticated.screenshot({path:new URL(`${screen.file}-${viewport.name}.png`,output).pathname.replace(/^\/([A-Za-z]:)/,'$1'),fullPage:true})
       verified.push(`${screen.path} ${viewport.name}: rendered, no horizontal viewport overflow`)
     }
+    // These fixtures exercise slow/failed synchronization without changing the real worker or engine.
+    for (const sync of ['PENDING','FAILED_RETRYABLE']) {
+      doc.process_sync_status=sync
+      await authenticated.goto(`${base}/documents/${docId}`)
+      const ready=authenticated.getByTestId('document-ready')
+      await ready.waitFor()
+      assert.equal(await ready.isDisabled(),true)
+      await authenticated.goto(`${base}/worklist`)
+      await authenticated.getByTestId('station-select').waitFor()
+      await authenticated.getByText('รอ workflow ประสาน',{exact:true}).waitFor()
+      assert.equal(await authenticated.getByTestId(`ready-${docId}`).count(),0)
+      verified.push(`${viewport.name}: ${sync} disables origin READY and exposes no unit mutation`)
+    }
+    doc.process_sync_status='PENDING'
     await authenticated.goto(`${base}/admin/units`)
     await authenticated.getByLabel('รหัสหน่วยงาน',{exact:true}).fill('UI-NEW')
     await authenticated.getByLabel('ชื่อหน่วยงาน',{exact:true}).fill('หน่วยงานเพิ่มจากทดสอบหน้าจอ')

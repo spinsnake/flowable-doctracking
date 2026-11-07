@@ -1,0 +1,163 @@
+{
+  "date": "2026-11-07",
+  "scope": "Isolated development; real PostgreSQL 17.11, Spring HTTP, Flowable, Chrome. Test-local signed OIDC only; UI smoke uses separate browser API fixtures.",
+  "backend": {
+    "default_verify": {
+      "passed": 53,
+      "skipped": 1,
+      "note": "P3 browser opt-in skipped in default verify; 47 P1/P2 regressions + 6 query tests passed on 2026-11-06."
+    },
+    "opt_in_browser": {
+      "passed": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "date": "2026-11-07"
+    },
+    "combined_passed": 54,
+    "suites": [
+      {
+        "name": "IdentityIntegrationTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "OAuthHttpIntegrationTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "P3BrowserIntegrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "SmtpIntegrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "TrackingIntegrationTest",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "TrackingWorkflowEngineIntegrationTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "WorkflowCommandsIntegrationTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "WorkflowOutboxIntegrationTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "WorkflowQueriesIntegrationTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "frontend": {
+    "typecheck": "PASS",
+    "unit_tests": {
+      "passed": 2
+    },
+    "static_build": "PASS; index.html exists",
+    "ui_smoke": {
+      "base": "http://127.0.0.1:62917",
+      "fixtureScope": "Authenticated screens use isolated browser request fixtures; no production mock provider",
+      "verified": [
+        "Google-only login desktop: no password, correct backend redirect, no overflow",
+        "/admin/units desktop: rendered, no horizontal viewport overflow",
+        "/documents desktop: rendered, no horizontal viewport overflow",
+        "/documents/40000000-0000-0000-0000-000000000001 desktop: rendered, no horizontal viewport overflow",
+        "/admin/users desktop: rendered, no horizontal viewport overflow",
+        "/worklist desktop: rendered, no horizontal viewport overflow",
+        "desktop: PENDING disables origin READY and exposes no unit mutation",
+        "desktop: FAILED_RETRYABLE disables origin READY and exposes no unit mutation",
+        "desktop: Unit create and number-only registration submit CSRF + idempotency headers",
+        "Google-only login mobile: no password, correct backend redirect, no overflow",
+        "/admin/units mobile: rendered, no horizontal viewport overflow",
+        "/documents mobile: rendered, no horizontal viewport overflow",
+        "/documents/40000000-0000-0000-0000-000000000001 mobile: rendered, no horizontal viewport overflow",
+        "/admin/users mobile: rendered, no horizontal viewport overflow",
+        "/worklist mobile: rendered, no horizontal viewport overflow",
+        "mobile: PENDING disables origin READY and exposes no unit mutation",
+        "mobile: FAILED_RETRYABLE disables origin READY and exposes no unit mutation",
+        "mobile: Unit create and number-only registration submit CSRF + idempotency headers",
+        "Unit Admin mobile: users query scoped to administered unit; no Unit Admin creation option",
+        "Origin Unit Admin without courier station grants can select server-authorized registration templates"
+      ],
+      "failures": []
+    }
+  },
+  "openapi": {
+    "version": "0.4.0-p3",
+    "paths": 39,
+    "operations": 46,
+    "validation": "PASS"
+  },
+  "browser": {
+    "document_id": "f12ba94e-9ad1-4e92-b825-7a7074f418a3",
+    "scope": "Real browser + native HTTP gateway + Spring HTTP + PostgreSQL + Flowable; only external OIDC provider is test-local",
+    "checks": [
+      "origin: signed OIDC authorization code / PKCE / real JDBC session",
+      "staff-b: signed OIDC authorization code / PKCE / real JDBC session",
+      "staff-c: signed OIDC authorization code / PKCE / real JDBC session",
+      "courier-1: signed OIDC authorization code / PKCE / real JDBC session",
+      "courier-2: signed OIDC authorization code / PKCE / real JDBC session",
+      "courier-3: signed OIDC authorization code / PKCE / real JDBC session",
+      "outsider: signed OIDC authorization code / PKCE / real JDBC session",
+      "T01: newly registered document is absent from courier queue before origin READY",
+      "Missing CSRF rejected without a workflow mutation",
+      "Unassigned signed-in actor cannot read another unit document",
+      "Real server rejects corrupt image finalization; pickup remains disabled and no pickup command or workflow transition occurs",
+      "Actual mobile 390 px corrupt upload, valid upload, photo preview and physical-presence confirmation",
+      "T03/T04 station 1: queue excludes dropoff-only and receipt-only documents; includes only after explicit READY",
+      "Leg 1: UI reservation → private photo → pickup → private photo → dropoff; destination receipt is explicit",
+      "T03/T04 station 2: queue excludes dropoff-only and receipt-only documents; includes only after explicit READY",
+      "Leg 2: UI reservation → private photo → pickup → private photo → dropoff; destination receipt is explicit",
+      "Leg 3: UI reservation → private photo → pickup → private photo → dropoff; destination receipt is explicit",
+      "Only origin membership with exact final route_step_id completes Model B; intermediate staff and initial occurrence rejected",
+      "Origin downloads all six event-linked private PNGs; unrelated signed-in user receives 404",
+      "Logout revokes the real JDBC session; desktop and 390 px mobile have no horizontal overflow"
+    ],
+    "failures": []
+  },
+  "screenshots": [
+    "images/pickup-mobile.png",
+    "images/unit-receipt-mobile.png",
+    "images/completed-desktop.png",
+    "images/completed-mobile.png",
+    "images/station-mobile.png"
+  ],
+  "limitations": [
+    "G0 decisions and infrastructure approval remain open",
+    "No physical phone camera test or real MFU Google/SMTP/HTTPS/S3 staging verification",
+    "Model A UI/default switch P4; bulk/direct/exception P5; operations/security/staging P6-P8"
+  ]
+}

@@ -114,10 +114,12 @@ public class ReservationService {
     }
     public Map<String,Object> list(Actor actor) {
         actor.requireCapability("COURIER");
-        return Map.of("items",s.db.queryForList("select id from reservations where owner_user_id=? and status='ACTIVE' order by created_at desc limit 100",UUID.class,actor.id()).stream().map(this::view).toList());
+        boolean allowed=s.db.queryForObject("select exists(select 1 from user_capabilities c join users u on u.id=c.user_id where c.user_id=? and c.capability='COURIER' and u.is_active and u.session_version=?)",Boolean.class,actor.id(),actor.sessionVersion());
+        if(!allowed) throw new ApiException(403,"FORBIDDEN","Active courier capability required");
+        return Map.of("items",s.db.queryForList("select r.id from reservations r join stations st on st.id=r.station_id join units u on u.id=st.unit_id join user_station_permissions p on p.station_id=st.id and p.user_id=r.owner_user_id where r.owner_user_id=? and r.status='ACTIVE' and st.is_active and u.is_active order by r.created_at desc limit 100",UUID.class,actor.id()).stream().map(this::view).toList());
     }
     private Map<String,Object> view(UUID id) {
         var row=s.one("select id,owner_user_id,station_id,status,expires_at,version,operation_id,correlation_id from reservations where id=?",id);
-        row.put("items",s.db.queryForList("select document_id,route_step_id,reserved_version as expected_version from reservation_items where reservation_id=?",id));return row;
+        row.put("items",s.db.queryForList("select i.document_id,i.route_step_id,i.reserved_version,d.version as expected_version,d.version as document_version,d.business_state,d.process_sync_status,d.latest_operation_id,d.tracking_mode from reservation_items i join documents d on d.id=i.document_id where i.reservation_id=?",id));return row;
     }
 }

@@ -1,8 +1,8 @@
 # Implementation Checklist — Flowable Document Tracking
 
-วันที่: 2026-11-06 (Asia/Bangkok)
+วันที่: 2026-11-07 (Asia/Bangkok)
 
-สถานะ: P1-01–25/G1 และ P2-01–10/G2 ผ่านในขอบเขต development/isolated integration tests แล้ว ดู [P2 Execution Report](p2/Execution_Report.md) — backend รวม 47 tests ผ่านพร้อม native JVM recovery; G0 ยังรอยืนยัน business/infra และ staging จริงยังเป็น P8
+สถานะ: P1/G1, P2/G2 และ P3-01–10/G3 ผ่านเฉพาะ development/isolated integration แล้ว ดู [P3 Execution Report](p3/Execution_Report.md) — backend 53 tests และ browser integration 1 test ผ่าน โดย Model B เดิน A→B→C→A ด้วย Courier 3 คนและจบหลังต้นทางยืนยันรับคืน; G0 ยังรอยืนยัน business/infra และ Google/SMTP/อุปกรณ์มือถือจริงบน staging ยังเป็น P8
 
 ## วิธีใช้และเอกสารอ้างอิง
 
@@ -27,14 +27,14 @@
 | P0 | กฎธุรกิจ, API/สิทธิ์, compatibility และ infra decisions | เอกสารข้อกำหนด | 8/14 · G0 รอยืนยัน business/infra |
 | P1 | Foundation, Google login, Central User/Unit, login email, registry/evidence/reservation | P0 สำหรับส่วนที่เกี่ยวข้อง | 25/25 · G1 ผ่านเฉพาะ development |
 | P2 | BPMN A/B ที่ execute ได้ และ workflow outbox/inbox ที่กู้คืนได้ | P1 data/transaction/authorization | 10/10 · G2 ผ่านเฉพาะ backend/headless development |
-| P3 | Model B ครบ A → B → C → A ผ่าน UI จริง | P1–P2 | 0/10 · ยังไม่เริ่ม |
+| P3 | Model B ครบ A → B → C → A ผ่าน UI จริง | P1–P2 | 10/10 · G3 ผ่านเฉพาะ isolated development/browser |
 | P4 | Model A และ switch default A/B โดยไม่กระทบเรื่องเดิม | P2–P3 | 0/9 · ยังไม่เริ่ม |
 | P5 | Bulk, direct transfer และ exception resolution | P3–P4 และ policy ที่ยืนยันแล้ว | 0/11 · ยังไม่เริ่ม |
 | P6 | Operations, reconciliation, deploy/rollback, backup/restore | Workflow และ integration ที่เกี่ยวข้อง | 0/12 · ยังไม่เริ่ม |
 | P7 | Security testing, แก้ช่องโหว่และทดสอบซ้ำ | P0–P6 และ staging ที่ทดสอบได้ | 0/18 · ยังไม่เริ่ม |
 | P8 | Staging verification, UAT และ Pilot | P0–P7 ผ่านตาม scope | 0/10 · ยังไม่เริ่ม |
 
-จำนวนงานไม่นับ Exit Gate และไม่รวมผล compatibility spike ไว้เป็นงาน P2 ที่เสร็จแล้ว งานพัฒนาถัดไปคือ **P3 — Model B ผ่าน UI จริง**; ปัจจุบัน worker เปลี่ยน `process_sync_status` จาก PENDING เป็น APPLIED หลัง apply สำเร็จแล้ว ส่วน READY/Check/receipt/return UI ยังรอ P3/P4
+จำนวนงานไม่นับ Exit Gate และไม่รวมผล compatibility spike ไว้เป็นงาน P2 ที่เสร็จแล้ว งานพัฒนาถัดไปคือ **P4 — Model A และ switch default A/B**; Model B เชื่อม READY/Check/receipt/return UI กับ worker/Flowable จริงแล้วตามหลักฐาน P3 โดยไม่เปลี่ยน mode ของเรื่องเดิม
 
 ไม่ผูก checklist นี้กับวันส่งมอบตายตัว ประเมินกำลังคนและระยะเวลาใหม่หลัง P0 โดยรวม Google/Central User/login email ที่เพิ่มเข้ามาแล้ว
 
@@ -143,32 +143,32 @@
 
 | สิ่งที่พร้อมแล้ว | งานที่ยังต้องทำ / Phase |
 |---|---|
-| Single-document READY/pickup/drop-off/receipt/return APIs และ A/B headless flow | ต่อปุ่ม ฟอร์ม worklists และ end-to-end ผ่าน UI ใน P3/P4 |
-| Photo validation, reservation ownership และ custody guards | ทดสอบ camera/upload บนมือถือ และหลาย Courier คนละ leg ใน P3-08–09/P8-06 |
+| Single-document READY/pickup/drop-off/receipt/return APIs และ A/B headless flow | Model B ผ่าน UI/end-to-end ใน [P3](p3/Execution_Report.md); Model A UI ยังเป็น P4 |
+| Photo validation, reservation ownership และ custody guards | Mobile viewport/file upload และ Courier 3 คนคนละ leg ผ่าน P3; physical camera/device testing ยังเป็น P8-06 |
 | Durable timer reminder feed และ technical recovery API | ส่ง reminder/escalation และทำ operations dashboard ใน P6; ยืนยัน SLA/timer policy ใน P0-07 |
 | JVM recovery, event replay และ definition version pinning | ตรวจ DB restart/host failure, deploy/rollback และ backup/restore ใน P6/P8 |
 | Compose config และ CI workflow | Build/start containers, remote CI และ Google/SMTP/S3/HTTPS staging จริงยังรอตรวจตามรายการส่งต่อ P1 และ P8 |
 
 ## P3 — Model B ครบเส้นทางผ่าน UI
 
-สถานะ: ยังไม่ปิดรายการ P3 แม้มีหน้าทะเบียน/รูปจาก P1 และ business APIs จาก P2 แล้ว ต้องเชื่อม UI กับ workflow จริงและมีหลักฐาน end-to-end ตามแต่ละรายการก่อนติ๊กเสร็จ
+สถานะ: ผ่านใน isolated development ด้วย Chrome, Spring HTTP, PostgreSQL และ Flowable จริง; เฉพาะ OIDC provider เป็น test-local ดู [Execution Report / acceptance matrix](p3/Execution_Report.md) และ [ผลทดสอบ](p3/Test_Results.json) ไม่ถือเป็น UAT หรือผล Google/SMTP/กล้องอุปกรณ์จริง
 
 ### งานที่ต้องทำ
 
-- [ ] **P3-01** ทำ Origin dashboard/register/template/list/detail โดยหนังสือใหม่ยังไม่เข้าคิว Courier ก่อนต้นทางกด READY
-- [ ] **P3-02** ทำ Unit READY และ eligible pickup worklist เฉพาะงาน/Station ที่ผู้ใช้มีสิทธิ์
-- [ ] **P3-03** ทำ single-item Courier reserve → ตรวจรายการ/ถ่ายรูป → Check รับ; บันทึก leg/custody ต่อช่วงหลังรับสำเร็จ
-- [ ] **P3-04** ทำ Courier งานของฉันและ Check ส่งพร้อมรูป โดยตรวจ owner/ปลายทาง; ปิด leg แล้วเปิด `PENDING_UNIT_RECEIPT`
-- [ ] **P3-05** ทำ Station ยืนยันรับ → `UNIT_PROCESSING` → พร้อมจัดส่ง; ห้าม Courier คนถัดไปจอง/รับก่อน READY
-- [ ] **P3-06** ทำ Origin ยืนยันรับคืนที่ return step; ยังไม่ `COMPLETED` เพียงเพราะ Courier Check ส่งคืน
-- [ ] **P3-07** ทำ timeline แยก courier report/unit receipt/unit ready พร้อม actor/time/evidence และป้าย business/sync status
-- [ ] **P3-08** ทำ error/loading/empty/conflict/upload-failed/sync-pending UI และทดสอบ camera/file flow บนมือถือ
-- [ ] **P3-09** ทดสอบ Courier หลายคนรับผิดชอบคนละ leg โดยไม่ต้องให้คนก่อนโอนงาน และทดสอบ guards ปิด/ย้ายผู้ใช้กับ leg/task จริง
-- [ ] **P3-10** ผ่าน T01–T06/T21/T23–T25 และ Google/session/permission regression ที่เกี่ยวข้องบน end-to-end flow
+- [x] **P3-01** ทำ Origin dashboard/register/template/list/detail โดยหนังสือใหม่ยังไม่เข้าคิว Courier ก่อนต้นทางกด READY — browser T01 และ P1 regression
+- [x] **P3-02** ทำ Unit READY และ eligible pickup worklist เฉพาะงาน/Station ที่ผู้ใช้มีสิทธิ์ — unit-worklist API + scope/redaction integration tests
+- [x] **P3-03** ทำ single-item Courier reserve → ตรวจรายการ/ถ่ายรูป → Check รับ; บันทึก leg/custody ต่อช่วงหลังรับสำเร็จ — browser 3 legs พร้อมรูป/physical presence
+- [x] **P3-04** ทำ Courier งานของฉันและ Check ส่งพร้อมรูป โดยตรวจ owner/ปลายทาง; ปิด leg แล้วเปิด `PENDING_UNIT_RECEIPT` — own-legs API/UI และ wrong-courier 403
+- [x] **P3-05** ทำ Station ยืนยันรับ → `UNIT_PROCESSING` → พร้อมจัดส่ง; ห้าม Courier คนถัดไปจอง/รับก่อน READY — browser T03/T04 ทั้ง B และ C
+- [x] **P3-06** ทำ Origin ยืนยันรับคืนที่ return step; ยังไม่ `COMPLETED` เพียงเพราะ Courier Check ส่งคืน — final occurrence guard และ origin-only completion
+- [x] **P3-07** ทำ timeline แยก courier report/unit receipt/unit ready พร้อม actor/time/evidence และป้าย business/sync status — timeline API/UI + origin-authorized private evidence
+- [x] **P3-08** ทำ error/loading/empty/conflict/upload-failed/sync-pending UI และทดสอบ camera/file flow บนมือถือ — 390px browser/file flow, corrupt PNG rejection/recovery และ pending/failed UI fixtures; physical camera/permissions บนมือถือจริงรอ P8
+- [x] **P3-09** ทดสอบ Courier หลายคนรับผิดชอบคนละ leg โดยไม่ต้องให้คนก่อนโอนงาน และทดสอบ guards ปิด/ย้ายผู้ใช้กับ leg/task จริง — 3 distinct courier owners; real document/reservation/leg removal guards และ session revocation
+- [x] **P3-10** ผ่าน T01–T06/T21/T23–T25 และ Google/session/permission regression ที่เกี่ยวข้องบน end-to-end flow — 53 backend tests + 1 real-browser integration; Google provider เป็น test-local
 
 ### Exit Gate P3
 
-- [ ] **G3** สาธิต Model B A→B→C→A ผ่าน UI พร้อมรูปและคนรับผิดชอบจริงในแต่ละช่วง; จบได้หลังต้นทางยืนยันรับคืนเท่านั้น
+- [x] **G3** สาธิต Model B A→B→C→A ผ่าน UI พร้อมรูปและคนรับผิดชอบจริงในแต่ละช่วง; จบได้หลังต้นทางยืนยันรับคืนเท่านั้น — ผ่านเฉพาะ isolated development ด้วย 7 fixture identities, 3 Courier, 6 รูป และ production workflow worker ตาม [P3 report](p3/Execution_Report.md)
 
 ## P4 — Model A และ switch default A/B
 
@@ -317,7 +317,7 @@
 | P0 | Codex: technical artifacts; business/infra owners รอระบุ | [Execution Report / test results](p0/Execution_Report.md) | ยังไม่ผ่าน G0 | P0-05–09/P0-14 และ field/image/exception policies ใน Decision Log |
 | P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; backend workflow ผ่าน P2 แล้วตาม [รายงาน](p2/Execution_Report.md); UI รอ P3/P4 |
 | P2 | Codex implementation; independent core review | [47 backend tests + JVM recovery](p2/Execution_Report.md) | 2026-11-06 เฉพาะ backend/headless G2 | G0 ยังเปิด; timer 24h เป็น dev baseline/durable feed ยังไม่ส่ง email; UI P3/P4, operations/staging P6–P8 |
-| P3 | — | — | — | — |
+| P3 | Codex implementation; scoped API/UI review | [54 backend/browser tests + UI smoke + screenshots](p3/Execution_Report.md) | 2026-11-07 เฉพาะ development G3 | G0 ยังเปิด; real Google/SMTP/S3/HTTPS/physical camera และ UAT เป็น P8; Model A/default switch เป็น P4 |
 | P4 | — | — | — | — |
 | P5 | — | — | — | — |
 | P6 | — | — | — | — |
