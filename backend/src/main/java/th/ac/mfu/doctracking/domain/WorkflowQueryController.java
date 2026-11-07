@@ -15,4 +15,8 @@ public class WorkflowQueryController {
         return queries.unitWorklist(actors.current(),id,cursor,limit);
     }
     @GetMapping("/courier/legs") public Object legs() { return queries.legs(actors.current()); }
+    @GetMapping("/courier/observation-context")
+    public Object observationContext(@RequestParam UUID document_id,@RequestParam UUID station_id) {
+        return queries.observationContext(actors.current(),document_id,station_id);
+    }
 }

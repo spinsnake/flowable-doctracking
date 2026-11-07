@@ -67,6 +67,7 @@ class P3BrowserIntegrationTest extends DatabaseTest {
     @AfterAll static void stopProvider(){PROVIDER.stop(0);}
 
     @Test void modelBTraversesThreeStationsThroughRealBrowserAndOriginAloneCompletes() throws Exception {
+        boolean p4="true".equals(System.getenv("P4_BROWSER_ENABLED"));
         var stations=new ArrayList<UUID>();var units=new ArrayList<UUID>();var users=new ArrayList<UUID>();
         String run=UUID.randomUUID().toString().substring(0,8);
         for(int i=0;i<3;i++) {
@@ -74,11 +75,12 @@ class P3BrowserIntegrationTest extends DatabaseTest {
             db.update("insert into units(id,code,name,is_active) values(?,?,?,true)",unit,"P3-"+run+"-"+i,"P3 Unit "+(char)('A'+i));
             db.update("insert into stations(id,unit_id,code,name) values(?,?,?,?)",station,unit,"P3-S-"+run+"-"+i,"P3 Station "+(char)('A'+i));
         }
-        String[] roles={"origin","staff-b","staff-c","courier-1","courier-2","courier-3","outsider"};
+        String[] roles=p4?new String[]{"origin","staff-b","staff-c","courier-1","courier-2","courier-3","outsider","admin"}:new String[]{"origin","staff-b","staff-c","courier-1","courier-2","courier-3","outsider"};
         var emails=new LinkedHashMap<String,String>();
         for(int i=0;i<roles.length;i++) {
             UUID user=UUID.randomUUID();users.add(user);String email=roles[i]+"-"+run+"@mfu.ac.th";emails.put(roles[i],email);EMAILS.add(email);
             db.update("insert into users(id,email,display_name) values(?,?,?)",user,email,"P3 "+roles[i]);
+            if(i==7)db.update("update users set is_admin=true where id=?",user);
             if(i<3) db.update("insert into unit_memberships(user_id,unit_id,role) values(?,?,'STAFF')",user,units.get(i));
             if(i==6) {
                 UUID unrelated=UUID.randomUUID();
@@ -101,9 +103,9 @@ class P3BrowserIntegrationTest extends DatabaseTest {
         if(!Files.isDirectory(root.resolve("frontend")))root=root.getParent();
         assertTrue(Files.isRegularFile(root.resolve("frontend/.output/public/index.html")),
                 "Build frontend first; the static SPA entrypoint must exist");
-        Path output=root.resolve("frontend/test-results/p3");Files.createDirectories(output);
+        Path output=root.resolve(p4?"frontend/test-results/p4":"frontend/test-results/p3");Files.createDirectories(output);
         Path fixtures=output.resolve("fixtures.json");
-        json.writeValue(fixtures.toFile(),Map.of("emails",emails,"stations",stations,"template",templateId,"backendPort",port,"run",run));
+        json.writeValue(fixtures.toFile(),Map.of("emails",emails,"stations",stations,"template",templateId,"backendPort",port,"run",run,"p4",p4));
         var scheduler=Executors.newSingleThreadScheduledExecutor();
         // The same production outbox worker applies committed events asynchronously; no APPLIED or ready state is seeded.
         scheduler.scheduleWithFixedDelay(()->{try{for(int i=0;i<25&&worker.processOne();i++){} }catch(Exception e){throw new IllegalStateException(e);}},0,100,TimeUnit.MILLISECONDS);
@@ -127,6 +129,21 @@ class P3BrowserIntegrationTest extends DatabaseTest {
             assertEquals(users.getFirst(),db.queryForObject("select actor_id from document_events where document_id=? and event_type='ORIGIN_RETURN_CONFIRMED'",UUID.class,document));
             assertTrue(PKCE_VERIFIED.get()>=7,"Each real browser actor must use the PKCE token exchange");
             assertEquals(0,db.queryForObject("select count(*) from workflow_outbox where document_id=? and status<>'APPLIED'",Integer.class,document));
+            if(p4) {
+                UUID modelA=UUID.fromString(result.get("model_a_id").toString()),observation=UUID.fromString(result.get("observation_id").toString()),newB=UUID.fromString(result.get("new_b_id").toString());
+                assertEquals("COURIER_TRACKING_COMPLETE",db.queryForObject("select business_state from documents where id=?",String.class,modelA));
+                assertEquals("MODEL_A",db.queryForObject("select tracking_mode from documents where id=?",String.class,modelA));
+                assertEquals(3,db.queryForObject("select count(distinct courier_user_id) from courier_legs where document_id=?",Integer.class,modelA));
+                assertEquals(0,db.queryForObject("select count(*) from document_events where document_id=? and event_type in ('UNIT_READY','UNIT_RECEIPT_CONFIRMED','ORIGIN_RETURN_CONFIRMED')",Integer.class,modelA));
+                assertEquals("EXCEPTION",db.queryForObject("select business_state from documents where id=?",String.class,observation));
+                assertEquals(1,db.queryForObject("select count(*) from tracking_exceptions where document_id=? and resolved_at is null",Integer.class,observation));
+                assertEquals(1,db.queryForObject("select count(*) from document_events where document_id=? and event_type='UNOBSERVED_TRANSFER' and actor_id is null and payload->>'transfer_started_at' is null and payload->>'transfer_arrived_at' is null",Integer.class,observation));
+                assertEquals(1,db.queryForObject("select count(*) from act_ru_task t join workflow_instances i on i.process_instance_id=t.proc_inst_id_ where i.document_id=? and t.task_def_key_='COURIER_PICKUP'",Integer.class,observation));
+                assertEquals("MODEL_B",db.queryForObject("select tracking_mode from documents where id=?",String.class,newB));
+                assertEquals("WAIT_ORIGIN_READY",db.queryForObject("select business_state from documents where id=?",String.class,newB));
+                assertEquals(2,db.queryForObject("select count(*) from audit_events where action='WORKFLOW_POLICY_CHANGED'",Integer.class));
+                assertTrue(PKCE_VERIFIED.get()>=8);
+            }
             for(UUID user:users) {
                 assertEquals(1,db.queryForObject("select count(*) from auth_events where user_id=? and event_type='LOGIN_SUCCEEDED'",Integer.class,user));
                 assertEquals(1,db.queryForObject("select count(*) from notification_outbox n join auth_events e on e.id=n.login_event_id where e.user_id=?",Integer.class,user));

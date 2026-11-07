@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { bangkok, eventText, type DocumentRecord, type TimelineEvent, type Page, type Station, type CommandResult } from '~/utils/types'
+import { bangkok, eventText, modelText, type DocumentRecord, type TimelineEvent, type Page, type Station, type CommandResult } from '~/utils/types'
 const api = useApi(); const route = useRoute(); const { actor, unitIds } = useSession()
 const id = computed(()=>encodeURIComponent(String(route.params.id)))
 const doc = ref<DocumentRecord>(); const events = ref<TimelineEvent[]>([]); const cursor = ref<string|null>(); const stations = ref<Station[]>([])
 const loading = ref(false); const saving = ref(false); const error = ref<unknown>(); const message = ref(''); const photoId = ref(''); const attached = ref(false); const operation = ref<CommandResult>()
 const label = (station:string)=>stations.value.find(s=>s.id===station)?.name||station
+const routePosition = (step:string)=>{const found=doc.value?.route_snapshot.find(s=>s.step_id===step);return found?found.sequence+1:'ไม่ระบุ'}
 const canReady = computed(()=>{
   const d = doc.value
   if (!d || d.tracking_mode !== 'MODEL_B') return false
@@ -45,19 +46,19 @@ onMounted(()=>load())
   <UProgress v-if="loading" />
   <template v-if="doc">
     <section class="panel">
-      <div class="actions"><span class="status">Model {{doc.tracking_mode}}</span><StatusTag :value="doc.business_state" /><StatusTag :value="doc.process_sync_status" /></div>
+      <div class="actions"><span class="status">{{modelText(doc.tracking_mode)}}</span><StatusTag :value="doc.business_state" /><StatusTag :value="doc.process_sync_status" /></div>
       <p v-if="doc.process_sync_status!=='APPLIED'" class="hint">ข้อมูลหนังสือบันทึกแล้ว ขั้นตอนถัดไปจะพร้อมเมื่อ workflow ประสานสำเร็จ</p>
       <p v-if="doc.business_state==='WAIT_ORIGIN_READY'" class="hint">หนังสือนี้ยังไม่เข้าคิว Courier ต้นทางต้องตรวจหนังสือและกดพร้อมจัดส่งก่อน</p>
       <div v-if="canReady||canReturn" class="actions">
         <button v-if="canReady" data-testid="document-ready" class="button primary" :disabled="saving||doc.process_sync_status!=='APPLIED'||!!operation" @click="workflow('ready')">{{saving?'กำลังบันทึก…':'พร้อมจัดส่ง'}}</button>
         <button v-if="canReturn" data-testid="document-return" class="button primary" :disabled="saving||doc.process_sync_status!=='APPLIED'||!!operation" @click="workflow('confirm-return')">{{saving?'กำลังบันทึก…':'ยืนยันรับคืนต้นทาง'}}</button>
       </div>
-      <dl class="meta"><dt>เลขอ้างอิงระบบ</dt><dd>{{doc.id}}</dd><dt>Policy / เวอร์ชันข้อมูล</dt><dd>{{doc.policy_version}} / {{doc.version}}</dd></dl>
+      <p v-if="doc.tracking_mode==='MODEL_A'" class="hint">Model A ใช้หลักฐานการพบและรับส่งของ Courier ไม่มี Unit READY หรือการยืนยันรับจากหน่วยงาน<span v-if="doc.business_state==='COURIER_TRACKING_COMPLETE'"> การติดตามการนำส่งครบแล้ว ไม่ได้ยืนยันว่าหน่วยงานรับคืน</span></p><p v-if="doc.business_state==='EXCEPTION'" class="notice sync-notice">พบตำแหน่งที่ต้องตรวจสอบ งานถูกพักไว้ก่อนรับส่งต่อ กรุณาติดต่อผู้มีสิทธิ์แก้ไขข้อยกเว้น</p><dl class="meta"><dt>เลขอ้างอิงระบบ</dt><dd>{{doc.id}}</dd><dt>Policy / เวอร์ชันข้อมูล</dt><dd>{{doc.policy_version}} / {{doc.version}}</dd></dl>
       <h2>เส้นทางที่ตรึงไว้</h2><ol class="route-steps"><li v-for="step in doc.route_snapshot" :key="step.step_id"><small>จุดที่ {{step.sequence+1}}{{step.step_id===doc.current_route_step_id?' · ปัจจุบัน':''}}</small>{{label(step.station_id)}}</li></ol>
     </section>
     <div class="split">
       <section class="panel"><h2>ประวัติหนังสือ</h2><div v-if="!events.length&&!loading" class="empty">ยังไม่มีเหตุการณ์ที่คุณเข้าถึงได้</div>
-        <ol class="timeline"><li v-for="event in events" :key="event.event_id"><h3>{{eventText(event.event_type)}}</h3><p class="hint">{{bangkok(event.recorded_at)}} · ลำดับ {{event.sequence}}</p><p class="hint">ผู้บันทึก: {{event.actor_display_name || event.actor_id || 'ระบบ'}}</p><a v-for="evidence in event.evidence_ids" :key="evidence" class="button actions" :href="`/api/v1/evidence/${encodeURIComponent(evidence)}/content`" target="_blank" rel="noopener">ดูหลักฐานรูป</a></li></ol>
+        <ol class="timeline"><li v-for="event in events" :key="event.event_id"><h3>{{eventText(event.event_type)}}</h3><p class="hint">{{bangkok(event.recorded_at)}} · ลำดับ {{event.sequence}}</p><p class="hint">ผู้บันทึก: {{event.event_type==='UNOBSERVED_TRANSFER'?'ไม่ทราบผู้นำส่งในช่วงที่ไม่มีหลักฐาน':event.actor_display_name || event.actor_id || 'ระบบ'}}</p><p v-if="event.observation?.reason" class="hint">เหตุผล: {{event.observation.reason}}</p><p v-if="event.observation?.observed_station_id" class="hint">พบที่: {{label(event.observation.observed_station_id)}}<span v-if="event.observation.proposed_route_step_id"> · จุดที่ {{routePosition(event.observation.proposed_route_step_id)}}</span></p><p v-if="event.event_type==='UNOBSERVED_TRANSFER'" class="hint">เวลาที่แสดงคือเวลาบันทึกช่องว่าง ไม่ทราบเวลารับหรือส่งของช่วงนี้</p><a v-for="evidence in event.evidence_ids" :key="evidence" class="button actions" :href="`/api/v1/evidence/${encodeURIComponent(evidence)}/content`" target="_blank" rel="noopener">ดูหลักฐานรูป</a></li></ol>
         <button v-if="cursor" class="button" :disabled="loading" @click="load(true)">โหลดประวัติเพิ่มเติม</button>
       </section>
       <section class="panel"><h2>รูปหลักฐาน</h2><p class="muted">รูปเป็นข้อมูลส่วนตัว ต้องผ่านการตรวจไฟล์ก่อนใช้งาน การแนบรูปในประวัติไม่เปลี่ยนสถานะหนังสือหรือผู้ถือครอง</p>

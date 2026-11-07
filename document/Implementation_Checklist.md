@@ -2,7 +2,7 @@
 
 วันที่: 2026-11-07 (Asia/Bangkok)
 
-สถานะ: P1/G1, P2/G2 และ P3-01–10/G3 ผ่านเฉพาะ development/isolated integration แล้ว ดู [P3 Execution Report](p3/Execution_Report.md) — backend 53 tests และ browser integration 1 test ผ่าน โดย Model B เดิน A→B→C→A ด้วย Courier 3 คนและจบหลังต้นทางยืนยันรับคืน; G0 ยังรอยืนยัน business/infra และ Google/SMTP/อุปกรณ์มือถือจริงบน staging ยังเป็น P8
+สถานะ: P1–P4/G1–G4 ผ่านเฉพาะ development/isolated integration ตาม baseline ดู [P4 Execution Report](p4/Execution_Report.md) — backend 69 tests และ browser integration A/B 1 test ผ่าน; Admin สลับ B→A→B มีผลเฉพาะเรื่องใหม่ Model A จบการติดตามแยกจาก B รับคืนต้นทาง การพบข้ามจุดเปิด exception/พักงานตาม X07; G0 ยังรอยืนยัน business/infra และ staging จริงยังเป็น P8
 
 ## วิธีใช้และเอกสารอ้างอิง
 
@@ -28,13 +28,13 @@
 | P1 | Foundation, Google login, Central User/Unit, login email, registry/evidence/reservation | P0 สำหรับส่วนที่เกี่ยวข้อง | 25/25 · G1 ผ่านเฉพาะ development |
 | P2 | BPMN A/B ที่ execute ได้ และ workflow outbox/inbox ที่กู้คืนได้ | P1 data/transaction/authorization | 10/10 · G2 ผ่านเฉพาะ backend/headless development |
 | P3 | Model B ครบ A → B → C → A ผ่าน UI จริง | P1–P2 | 10/10 · G3 ผ่านเฉพาะ isolated development/browser |
-| P4 | Model A และ switch default A/B โดยไม่กระทบเรื่องเดิม | P2–P3 | 0/9 · ยังไม่เริ่ม |
+| P4 | Model A และ switch default A/B โดยไม่กระทบเรื่องเดิม | P2–P3 | 9/9 · G4 ผ่านเฉพาะ development ตาม conservative observation baseline |
 | P5 | Bulk, direct transfer และ exception resolution | P3–P4 และ policy ที่ยืนยันแล้ว | 0/11 · ยังไม่เริ่ม |
 | P6 | Operations, reconciliation, deploy/rollback, backup/restore | Workflow และ integration ที่เกี่ยวข้อง | 0/12 · ยังไม่เริ่ม |
 | P7 | Security testing, แก้ช่องโหว่และทดสอบซ้ำ | P0–P6 และ staging ที่ทดสอบได้ | 0/18 · ยังไม่เริ่ม |
 | P8 | Staging verification, UAT และ Pilot | P0–P7 ผ่านตาม scope | 0/10 · ยังไม่เริ่ม |
 
-จำนวนงานไม่นับ Exit Gate และไม่รวมผล compatibility spike ไว้เป็นงาน P2 ที่เสร็จแล้ว งานพัฒนาถัดไปคือ **P4 — Model A และ switch default A/B**; Model B เชื่อม READY/Check/receipt/return UI กับ worker/Flowable จริงแล้วตามหลักฐาน P3 โดยไม่เปลี่ยน mode ของเรื่องเดิม
+จำนวนงานไม่นับ Exit Gate และไม่รวมผล compatibility spike ไว้เป็นงาน P2 ที่เสร็จแล้ว งานพัฒนาถัดไปคือ **P5 — Bulk, Direct Transfer และ Exception** โดยต้องยืนยัน policy ที่เกี่ยวข้องก่อนเปิดใช้; Model A/B ทำงานผ่าน UI ได้และ default switch ไม่เปลี่ยน mode ของเรื่องเดิม การ reconcile/resume หลังพบข้ามจุดยังรอ approved resolution ใน P5/X07
 
 ไม่ผูก checklist นี้กับวันส่งมอบตายตัว ประเมินกำลังคนและระยะเวลาใหม่หลัง P0 โดยรวม Google/Central User/login email ที่เพิ่มเข้ามาแล้ว
 
@@ -53,7 +53,7 @@
 - [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging — มี template/handoff และ loopback SMTP test ผ่านแล้ว; ยังไม่ยืนยัน relay จริงหรือทดสอบรับอีเมลถึง MFU inbox
 - [x] **P0-10** ทำ compatibility spike ของ Java/Spring Boot/Flowable/PostgreSQL: start engine, deploy BPMN, complete task, timer และ transaction rollback แล้วตรึงเวอร์ชันที่ทดสอบจริง — [spike/result](../spikes/flowable-compatibility/README.md): Java 21.0.13, Boot 4.0.9, Flowable 8.0.0, PostgreSQL 17.11; 3 tests ผ่าน 2026-11-06, timer execute แบบ deterministic
 - [x] **P0-11** กำหนด transaction boundaries สำหรับ business event/outbox, workflow worker/inbox และ login session/audit/email outbox ให้ชัดก่อน implementation — [Design Baseline §5](p0/Design_Baseline.md); shared JDBC/engine rollback ผ่าน spike และ login atomicity/rollback ผ่าน P1-15/T39 แล้วตาม [P1 Report](p1/Execution_Report.md); business workflow synchronization/shared transaction ผ่าน P2 แล้วตาม [P2 Report](p2/Execution_Report.md)
-- [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): P0 baseline 28 paths / 33 operations; P1 ผ่าน 35 paths / 42 operations; P2 ผ่าน 37 paths / 44 operations; ล่าสุด P3 version `0.4.0-p3` validation ผ่าน **39 paths / 46 operations** ตาม [ผลทดสอบ](p3/Test_Results.json) โดย direct/observation/default-policy/bulk ของ P4/P5 ยังไม่ถือว่า implement แล้ว
+- [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): P0 baseline 28 paths / 33 operations; P1 ผ่าน 35 paths / 42 operations; P2 ผ่าน 37 paths / 44 operations; P3 ผ่าน 39 paths / 46 operations; ล่าสุด P4 `0.5.0-p4` validation ผ่าน **40 paths / 47 operations** ตาม [ผลทดสอบ](p4/Test_Results.json) โดย observation/default-policy ใช้งานแล้ว แต่ direct/bulk/approved exception resolution ของ P5 ยังไม่เปิด
 - [x] **P0-13** ทบทวน UX gaps: ยืนยันรับคืน, conflict/จองหมดอายุ, upload error, sync pending, exception และหน้า Central/Unit Admin — [Design Baseline §6](p0/Design_Baseline.md)
 - [ ] **P0-14** ยืนยัน MVP exclusions: online-only, ไม่เปลี่ยน active-instance mode อัตโนมัติ, ไม่มี QR/OCR/native app และประเมินแผนเวลาด้วย scope ล่าสุด
 
@@ -111,7 +111,7 @@
 | งานค้าง | รายการที่ติดตามต่อ |
 |---|---|
 | Business policies และบัญชี/บริการจริงที่ได้รับอนุมัติ | P0-05–09 และ P0-14; G0 ยังไม่ผ่าน |
-| BPMN, workflow outbox consumer และการเปลี่ยน `PENDING` เป็น `APPLIED` | เสร็จใน P2-01–10/G2 ตาม [ผลทดสอบ](p2/Test_Results.json); Model B UI ผ่าน P3/G3 แล้ว ส่วน Model A UI เป็น P4 |
+| BPMN, workflow outbox consumer และการเปลี่ยน `PENDING` เป็น `APPLIED` | เสร็จใน P2-01–10/G2 ตาม [ผลทดสอบ](p2/Test_Results.json); Model B UI ผ่าน P3/G3 และ Model A UI ผ่าน P4/G4 แล้ว |
 | Build/start container stack และ staging smoke; run CI บน remote runner | P1-02–03 ตรวจ runtime เพิ่มเติมร่วมกับ P6-06 |
 | Private S3 service/bucket permissions จริง | P1-22 ตรวจ integration เพิ่มเติมร่วมกับ P7-11 |
 | Google login บน HTTPS และรับ email ถึง MFU inbox จริง | P8-01–02 / T42 |
@@ -120,7 +120,7 @@
 
 ## P2 — Flowable BPMN และ workflow synchronization
 
-หลักฐาน P2: [Execution Report](p2/Execution_Report.md), [ผล 47 backend tests / checks / JVM recovery](p2/Test_Results.json), [BPMN executable](../backend/src/main/resources/processes/document_tracking_v1.bpmn20.xml) — A/B เดินครบ A→B→C→A ผ่าน backend พร้อมรูป; Model B UI ผ่าน [P3](p3/Execution_Report.md) แล้ว ส่วน Model A UI ยังเป็น P4
+หลักฐาน P2: [Execution Report](p2/Execution_Report.md), [ผล 47 backend tests / checks / JVM recovery](p2/Test_Results.json), [BPMN executable](../backend/src/main/resources/processes/document_tracking_v1.bpmn20.xml) — A/B เดินครบ A→B→C→A ผ่าน backend พร้อมรูป; Model B UI ผ่าน [P3](p3/Execution_Report.md) และ Model A UI/default switch ผ่าน [P4](p4/Execution_Report.md) แล้ว
 
 ### งานที่ต้องทำ
 
@@ -143,7 +143,7 @@
 
 | สิ่งที่พร้อมแล้ว | งานที่ยังต้องทำ / Phase |
 |---|---|
-| Single-document READY/pickup/drop-off/receipt/return APIs และ A/B headless flow | Model B ผ่าน UI/end-to-end ใน [P3](p3/Execution_Report.md); Model A UI ยังเป็น P4 |
+| Single-document READY/pickup/drop-off/receipt/return APIs และ A/B headless flow | Model B ผ่าน UI/end-to-end ใน [P3](p3/Execution_Report.md); Model A UI/default switch ผ่าน [P4](p4/Execution_Report.md) |
 | Photo validation, reservation ownership และ custody guards | Mobile viewport/file upload และ Courier 3 คนคนละ leg ผ่าน P3; physical camera/device testing ยังเป็น P8-06 |
 | Durable timer reminder feed และ technical recovery API | ส่ง reminder/escalation และทำ operations dashboard ใน P6; ยืนยัน SLA/timer policy ใน P0-07 |
 | JVM recovery, event replay และ definition version pinning | ตรวจ DB restart/host failure, deploy/rollback และ backup/restore ใน P6/P8 |
@@ -184,7 +184,7 @@
 
 | งานที่ยังต้องทำ | รายการที่ติดตามต่อ |
 |---|---|
-| Model A UI, observation/reconciliation และ switch default A/B สำหรับเรื่องใหม่ | **P4-01–09/G4**; เรื่องเดิมยังคง mode/route/process version ที่ตรึงไว้ |
+| Model A UI, observation/reconciliation และ switch default A/B สำหรับเรื่องใหม่ | **P4-01–09/G4 ผ่านตาม baseline**; เรื่องเดิมยังคง mode/route/process version; การพบต่างจุดเปิด exception ส่วน approved resume เป็น P5/X07 |
 | Bulk, direct transfer และ exception resolution | P5-01–11/G5; policy ที่เกี่ยวข้องต้องยืนยันก่อนเปิดใช้ |
 | Operations dashboard, reminder/escalation, container/CI runtime และ deploy/restore | P6 และรายการส่งต่อ P1/P2 |
 | Security review/scan/retest ของ release | P7/G7; ผล scope/CSRF/session guards ใน P3 ยังไม่ใช่ security sign-off |
@@ -193,21 +193,32 @@
 
 ## P4 — Model A และ switch default A/B
 
+สถานะ: ผ่าน development ตาม [Execution Report](p4/Execution_Report.md), [Test Results](p4/Test_Results.json) และภาพ desktop/mobile; 69 backend tests + 1 real-browser integration ที่รวม A/B/default switch/observation ไม่มี business API mocks OIDC provider เป็น test-local และยังไม่ใช่ staging sign-off
+
 ### งานที่ต้องทำ
 
-- [ ] **P4-01** เปิด Model A worklist ที่ใช้ความหมาย “ตรวจพบเอกสารจริงก่อนรับ” โดยไม่บังคับ Unit READY หรือ receipt
-- [ ] **P4-02** ทำ Check รับ/ส่งพร้อมรูป, เปลี่ยน Courier ต่อช่วง และส่งคืนเป็น `COURIER_TRACKING_COMPLETE` แยกจาก B `COMPLETED`
-- [ ] **P4-03** ทำ observed-at/reconciliation เมื่อพบข้าม Station พร้อม `OBSERVED_AT` + `UNOBSERVED_TRANSFER`; ไม่เดาผู้ส่งหรือเวลาช่วงที่ไม่มีหลักฐาน
-- [ ] **P4-04** ตรวจ route eligibility/สิทธิ์/step ที่ซ้ำก่อน reconcile; กรณีระบุ step ไม่ได้หรือผิดเส้นทางเข้าสู่ exception ที่ผู้มีสิทธิ์จัดการ
-- [ ] **P4-05** ทำ Admin API/UI เปลี่ยน `default_tracking_mode` พร้อม reason/actor/time/policy version และ audit
-- [ ] **P4-06** หนังสือใหม่ copy mode/policy/snapshot ตามค่า ณ ตอนสร้างแบบสอดคล้องใน transaction; เรื่องเดิมไม่เปลี่ยนตาม default ใหม่
-- [ ] **P4-07** ปฏิเสธ active-instance mode switch ใน MVP; เปลี่ยน default แล้วไม่แก้ task, route, event หรือรูปย้อนหลัง
-- [ ] **P4-08** ทดสอบ A/B ทำงานพร้อมกัน, default B→A และ A→B, template เปลี่ยนเวอร์ชัน และป้าย/ตัวกรองสถานะที่ไม่สื่อหลักฐานเกินจริง
-- [ ] **P4-09** ผ่าน T07–T10/T17–T19 และ regression ของ Model B โดยยืนยันไม่มี fake unit events ใน Model A
+- [x] **P4-01** เปิด Model A worklist ที่ใช้ความหมาย “ตรวจพบเอกสารจริงก่อนรับ” โดยไม่บังคับ Unit READY หรือ receipt — T07 browser + shared photo/physical-presence flow
+- [x] **P4-02** ทำ Check รับ/ส่งพร้อมรูป, เปลี่ยน Courier ต่อช่วง และส่งคืนเป็น `COURIER_TRACKING_COMPLETE` แยกจาก B `COMPLETED` — 3 Courier/3 legs/6 รูปและไม่มี fake unit events
+- [x] **P4-03** ทำ observed-at/reconciliation เมื่อพบข้าม Station พร้อม `OBSERVED_AT` + `UNOBSERVED_TRANSFER`; ไม่เดาผู้ส่งหรือเวลาช่วงที่ไม่มีหลักฐาน — ตาม conservative baseline X07: same-step เป็น local evidence; ต่างจุดเปิด exception/คง current/reported/task; approved reconcile/resume เป็น P5-08
+- [x] **P4-04** ตรวจ route eligibility/สิทธิ์/step ที่ซ้ำก่อน reconcile; กรณีระบุ step ไม่ได้หรือผิดเส้นทางเข้าสู่ exception ที่ผู้มีสิทธิ์จัดการ — exact UUID บังคับเมื่อ Station อยู่ใน route; ambiguous step ถูกปฏิเสธ; off-route/final/backward เปิด case ไม่ advance
+- [x] **P4-05** ทำ Admin API/UI เปลี่ยน `default_tracking_mode` พร้อม reason/actor/time/policy version และ audit — GET/PUT `/admin/workflow-policy`, current-admin/CSRF/idempotency/version guards
+- [x] **P4-06** หนังสือใหม่ copy mode/policy/snapshot ตามค่า ณ ตอนสร้างแบบสอดคล้องใน transaction; เรื่องเดิมไม่เปลี่ยนตาม default ใหม่ — policy row locks serialize registration/switch; concurrency/snapshot tests ผ่าน
+- [x] **P4-07** ปฏิเสธ active-instance mode switch ใน MVP; เปลี่ยน default แล้วไม่แก้ task, route, event หรือรูปย้อนหลัง — ไม่มี active-mode endpoint; reject mass assignment และ immutable DB snapshot guards; process/task IDs เดิมคงอยู่
+- [x] **P4-08** ทดสอบ A/B ทำงานพร้อมกัน, default B→A และ A→B, template เปลี่ยนเวอร์ชัน และป้าย/ตัวกรองสถานะที่ไม่สื่อหลักฐานเกินจริง — browser + policy integration/template v2; UI filter เฉพาะรายการที่โหลดและระบุขอบเขต
+- [x] **P4-09** ผ่าน T07–T10/T17–T19 และ regression ของ Model B โดยยืนยันไม่มี fake unit events ใน Model A — 69 backend + 1 browser integration; T10 ใช้ exception/hold ตาม X07 ไม่ใช่ auto-reconcile
 
 ### Exit Gate P4
 
-- [ ] **G4** A/B รันจริงพร้อมกันได้, switch default มีผลเฉพาะเรื่องใหม่ และผ่าน POC gate เดิมพร้อม T20 และ identity gates ก่อนถือว่าสาธิตสองโมเดลได้
+- [x] **G4** A/B รันจริงพร้อมกันได้, switch default มีผลเฉพาะเรื่องใหม่ และผ่าน POC gate เดิมพร้อม T20 และ identity gates ก่อนถือว่าสาธิตสองโมเดลได้ — ผ่าน isolated development ตาม baseline; Model A terminal และ Model B origin return ผ่าน browser เดียวกันหลัง B→A→B; regression engine/outbox/identity ผ่าน; ไม่ปิด G0 หรือรับรอง staging
+
+### งานที่ส่งต่อหลัง P4
+
+| งานค้าง | รายการที่ติดตามต่อ |
+|---|---|
+| Approved reconciliation/resume ของ observation exception | X07 และ P5-08; ยังห้าม Check รับจากจุดที่ข้ามไปก่อนผู้มีสิทธิ์ resolve |
+| Bulk atomicity, direct-transfer evidence และ exception policy | P0-06/D06/D08/X07–08 ก่อนเปิด P5; ไม่มีการอนุมัติแทนเจ้าของระบบจากผล development |
+| Bulk/direct/exception implementation และ lifecycle guards | P5-01–11/G5 |
+| Operations/recovery/deploy/restore และ production security | P6–P7; real Google/SMTP/S3/HTTPS/physical mobile/UAT เป็น P8 |
 
 ## P5 — Bulk, Direct Transfer และ Exception
 
@@ -315,9 +326,9 @@
 | กลุ่มทดสอบ | ตรวจหลักใน phase | ตรวจซ้ำก่อน Pilot |
 |---|---|---|
 | T01–T06 — Model B | P3 ผ่าน isolated real-browser flow ตาม [หลักฐาน](p3/Execution_Report.md) | P8 UAT |
-| T07–T10 — Model A / observation | P4 | P8 |
+| T07–T10 — Model A / observation | P4 ผ่านตาม baseline: A delivery ครบและ observation gap เปิด exception/hold; approved resume ยังเป็น P5/X07 | P8 |
 | T11–T16 — Concurrency / bulk / direct | P1 พื้นฐาน, P5 ครบ | P8 |
-| T17–T19 — Default mode / snapshot | P4 | P6/P8 |
+| T17–T19 — Default mode / snapshot | P4 ผ่าน B→A→B/current instance isolation/template version ตาม [หลักฐาน](p4/Test_Results.json) | P6/P8 |
 | T20 — Duplicate event / restart | P2 ผ่าน worker/JVM recovery และ replay ตาม [หลักฐาน](p2/Test_Results.json) | P6/P8 |
 | T21 — Evidence failure | P1/P3 ผ่าน; corrupt PNG ถูกปฏิเสธ ไม่มี Check request หรือ version เปลี่ยน และเลือกไฟล์ใหม่ทำต่อได้ | P8 อุปกรณ์/storage จริง |
 | T22 — Receipt dispute | P5 | P8 |
@@ -336,10 +347,10 @@
 | Phase | ผู้รับผิดชอบ | Commit/PR/ผลทดสอบ | วันที่ผ่าน Gate | เรื่องค้าง/ข้อยกเว้นที่อนุมัติ |
 |---|---|---|---|---|
 | P0 | Codex: technical artifacts; business/infra owners รอระบุ | [Execution Report / test results](p0/Execution_Report.md) | ยังไม่ผ่าน G0 | P0-05–09/P0-14 และ field/image/exception policies ใน Decision Log |
-| P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; backend workflow ผ่าน P2 และ Model B UI ผ่าน P3 แล้ว ส่วน Model A UI เป็น P4 |
-| P2 | Codex implementation; independent core review | [47 backend tests + JVM recovery](p2/Execution_Report.md) | 2026-11-06 เฉพาะ backend/headless G2 | G0 ยังเปิด; timer 24h เป็น dev baseline/durable feed ยังไม่ส่ง email; Model B UI ผ่าน P3 แล้ว ส่วน Model A UI เป็น P4 และ operations/staging เป็น P6–P8 |
-| P3 | Codex implementation; scoped API/UI review | [54 backend/browser tests + UI smoke + screenshots](p3/Execution_Report.md) | 2026-11-07 เฉพาะ development G3 | G0 ยังเปิด; real Google/SMTP/S3/HTTPS/physical camera และ UAT เป็น P8; Model A/default switch เป็น P4 |
-| P4 | — | — | — | — |
+| P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; workflow/UI A/B ผ่าน P2–P4 แล้ว |
+| P2 | Codex implementation; independent core review | [47 backend tests + JVM recovery](p2/Execution_Report.md) | 2026-11-06 เฉพาะ backend/headless G2 | G0 ยังเปิด; timer 24h เป็น dev baseline/durable feed ยังไม่ส่ง email; UI A/B ผ่าน P3/P4 แล้ว ส่วน operations/staging เป็น P6–P8 |
+| P3 | Codex implementation; scoped API/UI review | [54 backend/browser tests + UI smoke + screenshots](p3/Execution_Report.md) | 2026-11-07 เฉพาะ development G3 | G0 ยังเปิด; real Google/SMTP/S3/HTTPS/physical camera และ UAT เป็น P8; Model A/default switch ผ่าน P4 แล้ว |
+| P4 | Codex implementation; independent scoped policy/observation/UI review | [70 backend/browser tests + screenshots](p4/Execution_Report.md) | 2026-11-07 เฉพาะ development G4 ตาม baseline | G0/X07 ยังเปิด; observation ข้ามจุดพักรอ approved resolution P5; bulk/direct/exception P5, operations/security/staging P6–P8 |
 | P5 | — | — | — | — |
 | P6 | — | — | — | — |
 | P7 | — | — | — | — |

@@ -1,4 +1,4 @@
-# MFU Document Tracking — P1/P2/P3
+# MFU Document Tracking — P1–P4
 
 Spring Boot 4.0.9 / Java 21 / Flowable 8.0.0 / PostgreSQL 17.11 backend และ Nuxt 4 / TypeScript frontend
 
@@ -6,7 +6,9 @@ P1 มี Google OIDC + MFU allowlist, Central/Unit administration, login notifi
 
 P2 เพิ่ม BPMN A/B ที่ execute ได้, outbox/inbox worker และ single-document workflow APIs เอกสารใหม่แสดง `PENDING` ระหว่าง sync แล้วเป็น `APPLIED` เมื่อ task พร้อม รายละเอียดอยู่ใน [P2 report](document/p2/Execution_Report.md)
 
-P3 เชื่อม Model B ผ่าน UI ครบเส้นทาง: Origin READY → Courier จอง/รับพร้อมรูป → งานนำส่งของฉัน/ส่งพร้อมรูป → หน่วยงานยืนยันรับ/READY → ต้นทางยืนยันรับคืน แยกคิวงานหน่วยงานจากคิวรับของ Courier และแสดง timeline พร้อม actor/time/evidence ดู [P3 report](document/p3/Execution_Report.md) คำสั่ง Model A UI/default switch ยังเป็น P4
+P3 เชื่อม Model B ผ่าน UI ครบเส้นทาง: Origin READY → Courier จอง/รับพร้อมรูป → งานนำส่งของฉัน/ส่งพร้อมรูป → หน่วยงานยืนยันรับ/READY → ต้นทางยืนยันรับคืน แยกคิวงานหน่วยงานจากคิวรับของ Courier และแสดง timeline พร้อม actor/time/evidence ดู [P3 report](document/p3/Execution_Report.md)
+
+P4 เปิด Model A รับ/ส่งพร้อมรูปโดยไม่บังคับ Unit READY/receipt และจบเป็น `COURIER_TRACKING_COMPLETE` เพิ่ม Admin default A/B สำหรับเรื่องใหม่เท่านั้นที่ `/admin/workflow-policy` และบันทึกพบหนังสือจริงที่ `/observations` การพบต่างจุดเปิด exception และคง engine task ตาม conservative baseline X07; approved resolution/resume เป็น P5 ดู [P4 report](document/p4/Execution_Report.md)
 
 Worker ตรวจ exact document/step/task/leg และ commit engine + inbox + ACK ใน transaction เดียวกัน ความล้มเหลวใช้ retry/backoff และ dead letter โดยบล็อกคำสั่งขั้นต่อไป มี Admin retry operation เดิมพร้อม audit ผ่าน `/api/v1/admin/workflow-operations/{operation_id}/retry` การจอง/ยกเลิก/หมดอายุการจองไม่ complete task
 
@@ -45,6 +47,8 @@ cd backend
 Frontend: `npm ci`, `npm run typecheck`, `npm test`, `npm run build` ภายใน `frontend` CI ทำ checks เดียวกันพร้อม PostgreSQL service
 
 P3 browser integration เป็น opt-in: build frontend ให้มี `.output/public/index.html` ก่อน ตั้ง `P3_BROWSER_ENABLED=true`, `PLAYWRIGHT_PACKAGE_JSON` เป็น absolute path ของ package ที่มี Playwright และ `BROWSER_CHANNEL=chrome` แล้วรัน `mvnw.cmd '-Dtest=P3BrowserIntegrationTest' test` ภายใน `backend` พร้อม `TEST_DB_*` เดิม ใช้ loopback gateway port 62916, signed OIDC provider ใน test source และ backend/DB/Flowable จริง; ไม่มี demo login ในแอป ผลลัพธ์อยู่ `frontend/test-results/p3` ดูรายละเอียด/ข้อจำกัดในรายงาน P3
+
+เพิ่ม `P4_BROWSER_ENABLED=true` พร้อม flag P3 เพื่อรัน Admin B→A→B, Model A และ observation ต่อด้วย Model B regression ใน harness เดิม; artifacts อยู่ `frontend/test-results/p4` ตาม [วิธีรัน P4](document/p4/Execution_Report.md)
 
 ## Staging configuration
 

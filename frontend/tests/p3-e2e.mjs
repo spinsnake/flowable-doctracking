@@ -26,7 +26,7 @@ const gateway=createServer(async(req,res)=>{
 })
 await new Promise((ok,bad)=>{gateway.once('error',bad);gateway.listen(62916,'127.0.0.1',ok)})
 const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'chrome'})
-let documentId
+let documentId,modelAId,observationId,newBId
 async function get(context,path){const response=await context.request.get(base+'/api/v1'+path);assert.equal(response.status(),200,`${path}: ${await response.text()}`);return response.json()}
 async function mutate(context,path,body,csrf=true){const headers={'Idempotency-Key':crypto.randomUUID()};if(csrf)headers['X-CSRF-TOKEN']=(await get(context,'/auth/csrf')).token;return context.request.post(base+'/api/v1'+path,{headers,data:body})}
 async function login(role){
@@ -59,6 +59,33 @@ async function photo(page){
   await page.getByTestId('photo-upload').click();await page.getByTestId('photo-ready').waitFor()
 }
 async function screenshot(page,name){await page.evaluate(async()=>{await document.fonts.ready;await new Promise(ok=>requestAnimationFrame(()=>requestAnimationFrame(ok)))});await page.screenshot({path:join(output,name+'.png'),fullPage:true,animations:'disabled'});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,name+' horizontal overflow')}
+async function register(origin,title,expected){
+  await origin.page.goto(base+'/documents/new');await origin.page.getByTestId('document-title').fill(title+' '+fixture.run)
+  await origin.page.getByTestId('document-template').selectOption(fixture.template+':1');await origin.page.getByTestId('document-register').click()
+  await origin.page.waitForURL(/\/documents\/[0-9a-f-]{36}$/);documentId=new URL(origin.page.url()).pathname.split('/').at(-1)
+  return state(origin,expected)
+}
+async function policy(admin,mode,reason){
+  await admin.page.goto(base+'/admin/workflow-policy');await admin.page.getByTestId('policy-mode').selectOption(mode);await admin.page.getByTestId('policy-reason').fill(reason)
+  const response=admin.page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname==='/api/v1/admin/workflow-policy')
+  await admin.page.getByTestId('policy-save').click();assert.equal((await response).status(),200)
+  assert.equal((await get(admin.context,'/admin/workflow-policy')).default_tracking_mode,mode)
+}
+async function transport(origin,courier,source,expected){
+  await work(courier,fixture.stations[source],true);await courier.page.getByTestId('reserve-'+documentId).click();await state(origin,'PICKUP_RESERVED')
+  await courier.page.goto(base+'/reservations');await courier.page.getByTestId('pickup-open-'+documentId).click();await photo(courier.page)
+  await courier.page.getByTestId('physical-presence').check();await courier.page.getByTestId('courier-pickup').click();await state(origin,'IN_TRANSIT')
+  await courier.page.goto(base+'/legs');await courier.page.getByTestId('dropoff-open-'+documentId).click();await photo(courier.page);await courier.page.getByTestId('courier-dropoff').click()
+  return state(origin,expected)
+}
+async function observe(courier,station,exactStep,reason){
+  await courier.page.goto(base+'/observations');await courier.page.getByTestId('observation-document').fill(documentId)
+  await courier.page.getByTestId('observation-station').selectOption(station);await courier.page.getByTestId('observation-load').click()
+  await courier.page.getByTestId('observation-step').selectOption(exactStep);await photo(courier.page)
+  await courier.page.getByTestId('observation-reason').fill(reason);await courier.page.getByTestId('observation-physical').check()
+  const response=courier.page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/observations'))
+  await courier.page.getByTestId('observation-submit').click();const result=await response;assert.equal(result.status(),200);return result.json()
+}
 try{
   await mkdir(output,{recursive:true})
   const origin=await login('origin'),staffB=await login('staff-b'),staffC=await login('staff-c'),courier1=await login('courier-1'),courier2=await login('courier-2'),courier3=await login('courier-3'),outsider=await login('outsider')
@@ -77,6 +104,61 @@ try{
   checks.push('Missing CSRF rejected without a workflow mutation')
   const denied=await outsider.context.request.get(`${base}/api/v1/documents/${documentId}`);assert.equal(denied.status(),404)
   checks.push('Unassigned signed-in actor cannot read another unit document')
+  if(fixture.p4){
+    const admin=await login('admin'),originalB=documentId,bSnapshot=JSON.stringify([doc.tracking_mode,doc.policy_version,doc.route_snapshot,doc.current_route_step_id,doc.version])
+    assert.equal((await origin.context.request.get(base+'/api/v1/admin/workflow-policy')).status(),403)
+    await policy(admin,'MODEL_A','P4 B to A while original B remains active')
+    const a=await register(origin,'P4 Model A delivery','AWAIT_PHYSICAL_PICKUP');modelAId=documentId
+    await origin.page.getByRole('heading',{name:'P4 Model A delivery '+fixture.run,exact:true}).waitFor()
+    assert.equal(await origin.page.getByTestId('document-ready').count(),0)
+    assert.equal(await origin.page.getByTestId('document-return').count(),0)
+    await eligible(courier1,fixture.stations[0],true)
+    const observation=await register(origin,'P4 physical finding','AWAIT_PHYSICAL_PICKUP');observationId=documentId
+    await policy(admin,'MODEL_B','P4 A to B while Model A instances remain active')
+    const aAfter=await get(origin.context,`/documents/${modelAId}`)
+    assert.deepEqual([aAfter.tracking_mode,aAfter.policy_version,aAfter.route_snapshot,aAfter.version],[a.tracking_mode,a.policy_version,a.route_snapshot,a.version])
+    const newB=await register(origin,'P4 new B after switch','WAIT_ORIGIN_READY');newBId=documentId
+    assert.equal(newB.tracking_mode,'MODEL_B');assert.ok(newB.policy_version>a.policy_version)
+    const oldB=await get(origin.context,`/documents/${originalB}`)
+    assert.equal(JSON.stringify([oldB.tracking_mode,oldB.policy_version,oldB.route_snapshot,oldB.current_route_step_id,oldB.version]),bSnapshot)
+    checks.push('T17/T18/T19: Admin UI B→A→B affects new registrations; existing active A/B mode, policy, route and version unchanged')
+    documentId=modelAId
+    await work(courier1,fixture.stations[0],true);await courier1.page.getByTestId('reserve-'+documentId).waitFor()
+    await courier1.page.getByTestId('filter-mode').selectOption('MODEL_B');await courier1.page.getByTestId('reserve-'+documentId).waitFor({state:'detached'})
+    await courier1.page.getByTestId('filter-mode').selectOption('MODEL_A');await courier1.page.getByTestId('filter-state').selectOption('AWAIT_PHYSICAL_PICKUP')
+    await courier1.page.getByTestId('reserve-'+documentId).waitFor();await courier1.page.getByTestId('filter-mode').selectOption('');await courier1.page.getByTestId('filter-state').selectOption('')
+    checks.push('Model/business-state filters operate on loaded courier worklist rows; Model B filter hides Model A without changing eligibility')
+    for(let source=0;source<3;source++){
+      doc=await transport(origin,couriers[source],source,source===2?'COURIER_TRACKING_COMPLETE':'DROPPED_OFF_UNCONFIRMED')
+      assert.equal(doc.pending_receipt_step_id,null)
+      if(source<2)await eligible(couriers[source+1],fixture.stations[source+1],true)
+    }
+    const aTimeline=await get(origin.context,`/documents/${modelAId}/timeline`)
+    assert.equal(aTimeline.items.filter(e=>['UNIT_READY','UNIT_RECEIPT_CONFIRMED','ORIGIN_RETURN_CONFIRMED'].includes(e.event_type)).length,0)
+    assert.equal(aTimeline.items.filter(e=>e.event_type==='COURIER_PICKED_UP').length,3)
+    await origin.page.goto(`${base}/documents/${modelAId}`);await origin.page.locator('.timeline li').last().waitFor()
+    await origin.page.getByText('ติดตามการนำส่งครบแล้ว',{exact:true}).waitFor();await screenshot(origin.page,'model-a-desktop')
+    await origin.page.setViewportSize({width:390,height:844});await screenshot(origin.page,'model-a-mobile');await origin.page.setViewportSize({width:1440,height:1000})
+    checks.push('T07/T08/T09: Model A traverses A→B→C→A with three couriers and six photos, no READY/unit receipt, ends tracking complete')
+    documentId=observationId
+    const current=await observe(courier1,fixture.stations[0],observation.route_snapshot[0].step_id,'Physically found at the exact initial occurrence')
+    assert.equal(current.reconciliation_status,'NOT_REQUIRED');await state(origin,'AWAIT_PHYSICAL_PICKUP')
+    doc=await transport(origin,courier1,0,'DROPPED_OFF_UNCONFIRMED')
+    const before=doc.current_route_step_id
+    await courier2.page.setViewportSize({width:390,height:844})
+    const gap=await observe(courier2,fixture.stations[2],doc.route_snapshot[2].step_id,'Physically found at C; B to C carrier and time are unknown')
+    assert.equal(gap.reconciliation_status,'REQUIRES_REVIEW');doc=await state(origin,'EXCEPTION')
+    assert.equal(doc.current_route_step_id,before);assert.equal(doc.reported_location_step_id,before)
+    await courier2.page.getByRole('status').filter({hasText:'บันทึกตำแหน่งและช่องว่างการนำส่งแล้ว'}).waitFor();await screenshot(courier2.page,'observation-mobile')
+    const gapTimeline=await get(origin.context,`/documents/${observationId}/timeline`)
+    const missing=gapTimeline.items.find(e=>e.event_type==='UNOBSERVED_TRANSFER')
+    assert.equal(missing.actor_id,null);assert.equal(missing.observation.transfer_started_at,null);assert.equal(missing.observation.transfer_arrived_at,null)
+    await origin.page.goto(`${base}/documents/${observationId}`);await origin.page.locator('.timeline li').filter({hasText:'พบช่องว่างการนำส่งที่ไม่มีหลักฐาน'}).waitFor();await screenshot(origin.page,'gap-timeline-desktop')
+    await admin.page.goto(base+'/admin/workflow-policy');await admin.page.getByTestId('policy-version').waitFor();await screenshot(admin.page,'policy-desktop')
+    await admin.page.setViewportSize({width:390,height:844});await screenshot(admin.page,'policy-mobile')
+    checks.push('T10 conservative baseline: same-step observation records evidence; B→C gap has unknown carrier/time and opens exception without advancing current/reported/task')
+    documentId=originalB;doc=await state(origin,'WAIT_ORIGIN_READY');await origin.page.goto(`${base}/documents/${originalB}`)
+  }
   await origin.page.reload();await origin.page.getByTestId('document-ready').click();await state(origin,'READY_FOR_PICKUP')
   await eligible(courier1,fixture.stations[0],true)
   for(let source=0;source<3;source++){
@@ -145,7 +227,7 @@ try{
   assert.ok(logout.ok());assert.equal((await outsider.context.request.get(base+'/api/v1/auth/me')).status(),401)
   checks.push('Logout revokes the real JDBC session; desktop and 390 px mobile have no horizontal overflow')
   assert.deepEqual(failures,[])
-  await writeFile(join(output,'report.json'),JSON.stringify({document_id:documentId,scope:'Real browser + native HTTP gateway + Spring HTTP + PostgreSQL + Flowable; only external OIDC provider is test-local',checks,failures},null,2))
+  await writeFile(join(output,'report.json'),JSON.stringify({document_id:documentId,model_a_id:modelAId,observation_id:observationId,new_b_id:newBId,scope:'Real browser + native HTTP gateway + Spring HTTP + PostgreSQL + Flowable; only external OIDC provider is test-local',checks,failures},null,2))
   console.log(JSON.stringify({document_id:documentId,checks,failures},null,2))
 }catch(error){
   for(let i=0;i<contexts.length;i++){const page=contexts[i].pages()[0];if(page)await page.screenshot({path:join(output,`failure-${i}.png`),fullPage:true}).catch(()=>{})}

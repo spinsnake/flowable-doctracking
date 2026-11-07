@@ -90,9 +90,12 @@ public class RegistryService {
     public Map<String,Object> timeline(Actor actor,UUID id,long after,int limit) {
         s.visible(actor,s.document(id,false));checkLimit(limit);
         if(after<0) throw new ApiException(422,"INVALID_CURSOR","Cursor must be nonnegative");
-        var rows=s.db.queryForList("select e.id,e.event_type,e.document_id,e.sequence,e.recorded_at,e.actor_id,a.display_name as actor_display_name,e.route_step_id,e.from_step_id,e.to_step_id from document_events e left join users a on a.id=e.actor_id where e.document_id=? and e.sequence>? order by e.sequence limit ?",id,after,limit+1);
+        var rows=s.db.queryForList("select e.id,e.event_type,e.document_id,e.sequence,e.recorded_at,e.actor_id,a.display_name as actor_display_name,e.route_step_id,e.from_step_id,e.to_step_id,case when e.event_type in ('OBSERVED_AT','UNOBSERVED_TRANSFER','EXCEPTION_OPENED') then e.payload::text end as observation from document_events e left join users a on a.id=e.actor_id where e.document_id=? and e.sequence>? order by e.sequence limit ?",id,after,limit+1);
         boolean more=rows.size()>limit;var chosen=rows.subList(0,Math.min(rows.size(),limit));
-        for(var row:chosen) { row.put("event_id",row.remove("id")); row.put("evidence_ids",s.db.queryForList("select evidence_id from event_evidence where event_id=?",UUID.class,row.get("event_id"))); }
+        for(var row:chosen) {
+            row.put("event_id",row.remove("id")); row.put("evidence_ids",s.db.queryForList("select evidence_id from event_evidence where event_id=?",UUID.class,row.get("event_id")));
+            if(row.get("observation")!=null) row.put("observation",s.decode(row.get("observation").toString()));
+        }
         var result=new LinkedHashMap<String,Object>(); result.put("items",chosen); result.put("next_cursor",more?chosen.getLast().get("sequence"):null);return result;
     }
     public Map<String,Object> worklist(Actor actor,UUID station,UUID cursor,int limit) {

@@ -1,11 +1,11 @@
 openapi: 3.0.3
 info:
   title: MFU Document Tracking Application API
-  version: 0.4.0-p3
+  version: 0.5.0-p4
   description: |
-    Application contract with P1 identity/registry, P2 workflow commands and P3 single-document UI read models.
-    Bulk/direct/observation/default-policy operations remain future P4-P5 scope; their presence
-    in this specification is not implementation evidence. See contracts/README.md for the P1 boundary.
+    Application contract with P1 identity/registry, P2 workflow commands, P3 UI read models and
+    P4 default-policy/Model A observations. Bulk/direct transfer/exception resolution remain P5 scope;
+    their presence in this specification is not implementation evidence. See contracts/README.md for scope.
     Flowable is embedded and accessed internally through Java APIs; no engine REST endpoint is exposed here.
     Business decisions D01-D17 remain subject to the decision log and owner approval. Reservation TTL,
     bulk atomicity, direct-transfer evidence, retention and SLA values are not approved by this contract.
@@ -594,10 +594,15 @@ paths:
     post:
       tags: [Tracking]
       operationId: recordObservation
-      summary: Authorized courier or operator records physical observation in Model A
+      summary: Explicitly scoped Courier records physical observation in Model A
       description: |
-        Never infer the missing transfer actor/time or create synthetic unit receipt/ready. Reconciliation to a later route
-        step requires permitted policy; off-route observations open an exception and do not advance automatically.
+        Requires active COURIER capability and an explicit grant for the active observed station/unit.
+        Never infer missing transfer actor/time or create synthetic unit receipt/ready. An exact current-step
+        observation records evidence without advancing. Any other occurrence or off-route station records
+        OBSERVED_AT + UNOBSERVED_TRANSFER + EXCEPTION_OPENED, holds business state EXCEPTION, and preserves
+        current/reported route position and the waiting engine task. X07 remains unapproved: no automatic
+        reconciliation, skipped step or completion. Unknown transfer actor/time remain null. Pending sync,
+        active reservation/leg/direct transfer, terminal states and existing exceptions reject observation.
       parameters:
         - {$ref: '#/components/parameters/Csrf'}
         - {$ref: '#/components/parameters/Idempotency'}
@@ -608,19 +613,71 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [expected_version, observed_station_id, evidence_upload_ids, reason]
+              required: [expected_version, observed_station_id, evidence_upload_ids, reason, physical_presence_confirmed]
               properties:
                 expected_version: {type: integer, format: int64, minimum: 0}
                 observed_station_id: {type: string, format: uuid}
-                proposed_route_step_id: {type: string, format: uuid, nullable: true}
+                proposed_route_step_id: {type: string, format: uuid, nullable: true, description: Required exact occurrence when observed station occurs on route; null only for an off-route station. Repeated station occurrences must be selected explicitly.}
                 evidence_upload_ids: {type: array, minItems: 1, uniqueItems: true, items: {type: string, format: uuid}}
                 reason: {type: string, minLength: 1, maxLength: 1000}
+                physical_presence_confirmed: {type: boolean, enum: [true]}
       responses:
-        '200': {$ref: '#/components/responses/CommandApplied'}
-        '202': {$ref: '#/components/responses/CommandPending'}
+        '200':
+          description: Local evidence persisted atomically; no workflow task is completed by observation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/CommandResult'}
+                  - type: object
+                    required: [reconciliation_status, exception_id]
+                    properties:
+                      reconciliation_status: {type: string, enum: [NOT_REQUIRED, REQUIRES_REVIEW]}
+                      exception_id: {type: string, format: uuid, nullable: true}
         '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/RuleViolation'}
+        default: {$ref: '#/components/responses/Error'}
+  /courier/observation-context:
+    get:
+      tags: [Tracking]
+      operationId: getCourierObservationContext
+      summary: Minimal context for a known Model A document at an assigned observed station
+      description: |
+        Requires active COURIER capability and an explicit grant for the selected active station/unit.
+        Accepts an off-route station. Model B returns 404. Returns only matching station occurrences,
+        not full route, title/number, origin identity or other users. can_observe is a UI hint and is false
+        for pending sync, custody, direct transfer, terminal state or exception; mutation independently rechecks.
+      parameters:
+        - {name: document_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: station_id, in: query, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Minimal context; choose an exact occurrence before submitting an on-route observation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document_id, document_version, tracking_mode, business_state, process_sync_status, latest_operation_id, current_route_step_id, reported_location_step_id, route_steps, can_observe]
+                properties:
+                  document_id: {type: string, format: uuid}
+                  document_version: {type: integer, format: int64, minimum: 0}
+                  tracking_mode: {type: string, enum: [MODEL_A]}
+                  business_state: {$ref: '#/components/schemas/BusinessState'}
+                  process_sync_status: {$ref: '#/components/schemas/ProcessSyncStatus'}
+                  latest_operation_id: {type: string, format: uuid, nullable: true, description: 'Present only for an operation owned by this courier; otherwise null. Reload context for another actor''s pending operation.'}
+                  current_route_step_id: {type: string, format: uuid}
+                  reported_location_step_id: {type: string, format: uuid, nullable: true}
+                  route_steps:
+                    type: array
+                    items:
+                      type: object
+                      required: [step_id, station_id, sequence]
+                      properties:
+                        step_id: {type: string, format: uuid}
+                        station_id: {type: string, format: uuid}
+                        sequence: {type: integer, minimum: 0}
+                  can_observe: {type: boolean}
         default: {$ref: '#/components/responses/Error'}
   /stations/{id}/worklist:
     parameters:
@@ -1065,7 +1122,14 @@ paths:
       tags: [Operations]
       operationId: updateWorkflowPolicy
       summary: ADMIN switches default mode for new documents only
-      description: Audit reason and old/new versions. Existing document modes and running process definitions are never migrated by this operation.
+      description: |
+        Requires current Central Admin permission. Atomically locks/version-checks the singleton policy and
+        appends audit actor/time/reason/old-new modes and policy versions. Audit action WORKFLOW_POLICY_CHANGED
+        stores a JSON reason envelope using the existing append-only audit table. Same-mode change returns
+        409 POLICY_UNCHANGED; stale version returns 409 STALE_VERSION. Registration takes a policy share lock
+        in its business transaction. Existing document modes, policy/route snapshots, tasks, events, evidence
+        and running process definitions are never migrated by this operation. Per-document override and active
+        instance mode mutation are not exposed; unknown payload properties are rejected.
       parameters:
         - {$ref: '#/components/parameters/Csrf'}
         - {$ref: '#/components/parameters/Idempotency'}
@@ -1527,13 +1591,34 @@ components:
         actor_id: {type: string, format: uuid, nullable: true, description: Null for unobserved transfer; never invent actor/time.}
         actor_display_name: {type: string, nullable: true, description: Current display name for the stable audit actor_id; null for a system event.}
         evidence_ids: {type: array, items: {type: string, format: uuid}, description: IDs are not public URLs; evidence access must authorize document/event/upload.}
+        observation:
+          type: object
+          nullable: true
+          description: Present only for observation/gap/exception events. recorded_at is the observation recording time, never an inferred transfer time.
+          properties:
+            observed_station_id: {type: string, format: uuid}
+            proposed_route_step_id: {type: string, format: uuid, nullable: true}
+            previous_route_step_id: {type: string, format: uuid}
+            previous_reported_location_step_id: {type: string, format: uuid, nullable: true}
+            reason: {type: string}
+            physical_presence_confirmed: {type: boolean, enum: [true]}
+            reconciliation_status: {type: string, enum: [NOT_REQUIRED, REQUIRES_REVIEW]}
+            transfer_actor_id: {type: string, format: uuid, nullable: true}
+            transfer_started_at: {type: string, format: date-time, nullable: true}
+            transfer_arrived_at: {type: string, format: date-time, nullable: true}
+            missing_transfer_evidence: {type: boolean}
+            exception_id: {type: string, format: uuid}
+            previous_state: {$ref: '#/components/schemas/BusinessState'}
+            code: {type: string, enum: [WRONG_STATION, UNOBSERVED_TRANSFER]}
     WorkflowPolicy:
       type: object
-      required: [default_tracking_mode, version, changed_at]
+      required: [default_tracking_mode, version, changed_at, changed_by, change_reason]
       properties:
         default_tracking_mode: {$ref: '#/components/schemas/TrackingMode'}
         version: {type: integer, format: int64, minimum: 0}
         changed_at: {type: string, format: date-time}
+        changed_by: {type: string, format: uuid, nullable: true, description: Actor of this policy version; null for the seeded initial policy.}
+        change_reason: {type: string, nullable: true, description: Human reason extracted from this version's JSON audit envelope; null for initial policy.}
     NotificationStatus:
       type: string
       enum: [PENDING, PROCESSING, RETRY_WAIT, ACCEPTED_BY_PROVIDER, FAILED]
