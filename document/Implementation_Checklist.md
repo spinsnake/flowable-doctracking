@@ -53,7 +53,7 @@
 - [ ] **P0-09** เตรียม SMTP relay/sender/TLS, ผู้ติดตาม failed-email jobs และบัญชี MFU สำหรับทดสอบ staging — มี template/handoff และ loopback SMTP test ผ่านแล้ว; ยังไม่ยืนยัน relay จริงหรือทดสอบรับอีเมลถึง MFU inbox
 - [x] **P0-10** ทำ compatibility spike ของ Java/Spring Boot/Flowable/PostgreSQL: start engine, deploy BPMN, complete task, timer และ transaction rollback แล้วตรึงเวอร์ชันที่ทดสอบจริง — [spike/result](../spikes/flowable-compatibility/README.md): Java 21.0.13, Boot 4.0.9, Flowable 8.0.0, PostgreSQL 17.11; 3 tests ผ่าน 2026-11-06, timer execute แบบ deterministic
 - [x] **P0-11** กำหนด transaction boundaries สำหรับ business event/outbox, workflow worker/inbox และ login session/audit/email outbox ให้ชัดก่อน implementation — [Design Baseline §5](p0/Design_Baseline.md); shared JDBC/engine rollback ผ่าน spike และ login atomicity/rollback ผ่าน P1-15/T39 แล้วตาม [P1 Report](p1/Execution_Report.md); business workflow synchronization/shared transaction ผ่าน P2 แล้วตาม [P2 Report](p2/Execution_Report.md)
-- [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): P0 baseline 28 paths / 33 operations; P1 validation ผ่าน 35 paths / 42 operations; ล่าสุดหลัง P2 ผ่าน 37 paths / 44 operations โดย direct/observation/default-policy/bulk ของ P4/P5 ยังไม่ถือว่า implement แล้ว
+- [x] **P0-12** เขียน OpenAPI ของ auth/provisioning/register/reserve/check/receipt/ready พร้อม error, idempotency, version และ `process_sync_status` — [OpenAPI + scope](../contracts/README.md): P0 baseline 28 paths / 33 operations; P1 ผ่าน 35 paths / 42 operations; P2 ผ่าน 37 paths / 44 operations; ล่าสุด P3 version `0.4.0-p3` validation ผ่าน **39 paths / 46 operations** ตาม [ผลทดสอบ](p3/Test_Results.json) โดย direct/observation/default-policy/bulk ของ P4/P5 ยังไม่ถือว่า implement แล้ว
 - [x] **P0-13** ทบทวน UX gaps: ยืนยันรับคืน, conflict/จองหมดอายุ, upload error, sync pending, exception และหน้า Central/Unit Admin — [Design Baseline §6](p0/Design_Baseline.md)
 - [ ] **P0-14** ยืนยัน MVP exclusions: online-only, ไม่เปลี่ยน active-instance mode อัตโนมัติ, ไม่มี QR/OCR/native app และประเมินแผนเวลาด้วย scope ล่าสุด
 
@@ -82,7 +82,7 @@
 - [x] **P1-10** ทำ bootstrap Central Admin แบบ idempotent จาก configured MFU email โดยไม่ต้องมี Unit และไม่มี app password/shared account
 - [x] **P1-11** ทำ API/UI ให้ Central Admin สร้าง Unit ที่รอ Admin และแต่งตั้ง UNIT_ADMIN พร้อมเปิด Unit แบบ atomic
 - [x] **P1-12** ทำ API/UI เพิ่ม/แก้/ปิด STAFF; UNIT_ADMIN ทำได้เฉพาะ Unit ตน; ห้ามสร้าง Central Admin/เพิ่มสิทธิ์ตนเอง/ข้าม Unit ผ่าน API ตรง
-- [x] **P1-13** ทำ guards รักษา Unit Admin คนสุดท้าย และตรวจงานค้างก่อนย้าย/ปิดบัญชีหรือ Unit พร้อม revoke sessions และ audit; ทดสอบซ้ำกับ leg/task จริงใน P3–P5
+- [x] **P1-13** ทำ guards รักษา Unit Admin คนสุดท้าย และตรวจงานค้างก่อนย้าย/ปิดบัญชีหรือ Unit พร้อม revoke sessions และ audit — P3 ทดสอบซ้ำกับ document/reservation/leg จริงและ role-change session revocation ผ่านแล้วตาม [รายงาน](p3/Execution_Report.md); bulk/direct-transfer/exception guards ยังต้องตรวจใน P5
 - [x] **P1-14** ทำหน้า Google-only login/profile/user status: รอเข้า Google ครั้งแรก/ผูกแล้ว/ปิดใช้ และ error เมื่อบัญชีไม่มีสิทธิ์
 
 ### อีเมลแจ้งเตือน login
@@ -111,16 +111,16 @@
 | งานค้าง | รายการที่ติดตามต่อ |
 |---|---|
 | Business policies และบัญชี/บริการจริงที่ได้รับอนุมัติ | P0-05–09 และ P0-14; G0 ยังไม่ผ่าน |
-| BPMN, workflow outbox consumer และการเปลี่ยน `PENDING` เป็น `APPLIED` | เสร็จใน P2-01–10/G2 ตาม [ผลทดสอบ](p2/Test_Results.json); ต่อ UI ใน P3/P4 |
+| BPMN, workflow outbox consumer และการเปลี่ยน `PENDING` เป็น `APPLIED` | เสร็จใน P2-01–10/G2 ตาม [ผลทดสอบ](p2/Test_Results.json); Model B UI ผ่าน P3/G3 แล้ว ส่วน Model A UI เป็น P4 |
 | Build/start container stack และ staging smoke; run CI บน remote runner | P1-02–03 ตรวจ runtime เพิ่มเติมร่วมกับ P6-06 |
 | Private S3 service/bucket permissions จริง | P1-22 ตรวจ integration เพิ่มเติมร่วมกับ P7-11 |
 | Google login บน HTTPS และรับ email ถึง MFU inbox จริง | P8-01–02 / T42 |
 
-รายการส่งต่อเหล่านี้ยังไม่ผ่านการตรวจรับ การมี config/code หรือผ่าน isolated tests ไม่ถือว่าได้ผล staging verification
+รายการที่ระบุว่ายังรอตรวจยังไม่ผ่านการตรวจรับ staging; workflow และ Model B UI มีผล development ตาม P2/P3 แล้ว การมี config/code หรือผ่าน isolated tests ไม่ถือว่าได้ผล staging verification
 
 ## P2 — Flowable BPMN และ workflow synchronization
 
-หลักฐาน P2: [Execution Report](p2/Execution_Report.md), [ผล 47 backend tests / checks / JVM recovery](p2/Test_Results.json), [BPMN executable](../backend/src/main/resources/processes/document_tracking_v1.bpmn20.xml) — A/B เดินครบ A→B→C→A ผ่าน backend พร้อมรูป; UI ยังเป็น P3/P4
+หลักฐาน P2: [Execution Report](p2/Execution_Report.md), [ผล 47 backend tests / checks / JVM recovery](p2/Test_Results.json), [BPMN executable](../backend/src/main/resources/processes/document_tracking_v1.bpmn20.xml) — A/B เดินครบ A→B→C→A ผ่าน backend พร้อมรูป; Model B UI ผ่าน [P3](p3/Execution_Report.md) แล้ว ส่วน Model A UI ยังเป็น P4
 
 ### งานที่ต้องทำ
 
@@ -169,6 +169,27 @@
 ### Exit Gate P3
 
 - [x] **G3** สาธิต Model B A→B→C→A ผ่าน UI พร้อมรูปและคนรับผิดชอบจริงในแต่ละช่วง; จบได้หลังต้นทางยืนยันรับคืนเท่านั้น — ผ่านเฉพาะ isolated development ด้วย 7 fixture identities, 3 Courier, 6 รูป และ production workflow worker ตาม [P3 report](p3/Execution_Report.md)
+
+### ผลตรวจล่าสุดและงานที่ส่งต่อหลัง P3
+
+หลักฐานอ้างอิง: [Test Results](p3/Test_Results.json) และ [Execution Report / ภาพหน้าจอ](p3/Execution_Report.md) เป็นผลการรันที่บันทึกไว้วันที่ 2026-11-06–07; การอัปเดต checklist ครั้งนี้ไม่ได้รันชุดทดสอบใหม่
+
+| ชุดตรวจ | ผลที่บันทึกไว้ |
+|---|---|
+| Backend default `verify` | 53 tests ผ่าน; browser opt-in 1 test ถูกข้ามตามเงื่อนไข |
+| Browser integration แบบ opt-in | 1 test ผ่านแยกจาก default verify; รวม backend/browser **54 tests ผ่าน** |
+| Frontend | typecheck, Node tests 2 tests และ static build พร้อม `index.html` ผ่าน |
+| UI smoke | 20 checks ผ่านบน desktop/mobile รวม pending/failed เป็น read-only; ใช้ API fixtures แยกจาก browser integration |
+| API contract | OpenAPI `0.4.0-p3` validation ผ่าน 39 paths / 46 operations |
+
+| งานที่ยังต้องทำ | รายการที่ติดตามต่อ |
+|---|---|
+| Model A UI, observation/reconciliation และ switch default A/B สำหรับเรื่องใหม่ | **P4-01–09/G4**; เรื่องเดิมยังคง mode/route/process version ที่ตรึงไว้ |
+| Bulk, direct transfer และ exception resolution | P5-01–11/G5; policy ที่เกี่ยวข้องต้องยืนยันก่อนเปิดใช้ |
+| Operations dashboard, reminder/escalation, container/CI runtime และ deploy/restore | P6 และรายการส่งต่อ P1/P2 |
+| Security review/scan/retest ของ release | P7/G7; ผล scope/CSRF/session guards ใน P3 ยังไม่ใช่ security sign-off |
+| Google/SMTP/HTTPS/private S3 จริง, กล้อง iOS/Android และ UAT | P8/G8; mobile viewport/file upload ใน P3 ไม่แทนการทดสอบอุปกรณ์จริง |
+| Business/infra decisions ที่ยังไม่อนุมัติ | P0-05–09/P0-14 และ G0 ยังคงเปิด |
 
 ## P4 — Model A และ switch default A/B
 
@@ -293,17 +314,17 @@
 
 | กลุ่มทดสอบ | ตรวจหลักใน phase | ตรวจซ้ำก่อน Pilot |
 |---|---|---|
-| T01–T06 — Model B | P3 | P8 |
+| T01–T06 — Model B | P3 ผ่าน isolated real-browser flow ตาม [หลักฐาน](p3/Execution_Report.md) | P8 UAT |
 | T07–T10 — Model A / observation | P4 | P8 |
 | T11–T16 — Concurrency / bulk / direct | P1 พื้นฐาน, P5 ครบ | P8 |
 | T17–T19 — Default mode / snapshot | P4 | P6/P8 |
 | T20 — Duplicate event / restart | P2 ผ่าน worker/JVM recovery และ replay ตาม [หลักฐาน](p2/Test_Results.json) | P6/P8 |
-| T21 — Evidence failure | P1/P3 | P8 |
+| T21 — Evidence failure | P1/P3 ผ่าน; corrupt PNG ถูกปฏิเสธ ไม่มี Check request หรือ version เปลี่ยน และเลือกไฟล์ใหม่ทำต่อได้ | P8 อุปกรณ์/storage จริง |
 | T22 — Receipt dispute | P5 | P8 |
-| T23–T25 — Custody / scope / route steps | P2/P3 | P8 |
+| T23–T25 — Custody / scope / route steps | P2/P3 ผ่าน; wrong courier, outsider และ wrong return occurrence ถูกปฏิเสธ | P8 |
 | T26 — Process version | P2 version pinning ผ่าน; deploy/rollback จริงตรวจต่อ P6 | P8 |
 | T27–T34 — Google / identity / provisioning | P1 | P7/P8 |
-| T35 — Revoke / outstanding work / last admin | P1 foundation, P3–P5 งานจริง | P6/P7/P8 |
+| T35 — Revoke / outstanding work / last admin | P1 foundation และ P3 document/reservation/leg guards ผ่าน; bulk/direct/exception ยังรอ P5 | P6/P7/P8 |
 | T36–T41 — Login email / failure / session | P1 | P6/P7/P8 |
 | T42 — Google/SMTP staging จริง | P8 | ก่อน Pilot |
 | P7-01–P7-18 — Security coverage เพิ่มเติม | P7 | Retest เมื่อแก้ไขก่อนผ่าน G8 |
@@ -315,8 +336,8 @@
 | Phase | ผู้รับผิดชอบ | Commit/PR/ผลทดสอบ | วันที่ผ่าน Gate | เรื่องค้าง/ข้อยกเว้นที่อนุมัติ |
 |---|---|---|---|---|
 | P0 | Codex: technical artifacts; business/infra owners รอระบุ | [Execution Report / test results](p0/Execution_Report.md) | ยังไม่ผ่าน G0 | P0-05–09/P0-14 และ field/image/exception policies ใน Decision Log |
-| P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; backend workflow ผ่าน P2 แล้วตาม [รายงาน](p2/Execution_Report.md); UI รอ P3/P4 |
-| P2 | Codex implementation; independent core review | [47 backend tests + JVM recovery](p2/Execution_Report.md) | 2026-11-06 เฉพาะ backend/headless G2 | G0 ยังเปิด; timer 24h เป็น dev baseline/durable feed ยังไม่ส่ง email; UI P3/P4, operations/staging P6–P8 |
+| P1 | Codex implementation; infra/business owners รอยืนยัน | [Execution Report / 29 backend tests + frontend checks](p1/Execution_Report.md) | 2026-11-06 เฉพาะ development G1 | G0 ยังเปิด; P0 policies, real Google/SMTP/S3/HTTPS staging, container runtime; backend workflow ผ่าน P2 และ Model B UI ผ่าน P3 แล้ว ส่วน Model A UI เป็น P4 |
+| P2 | Codex implementation; independent core review | [47 backend tests + JVM recovery](p2/Execution_Report.md) | 2026-11-06 เฉพาะ backend/headless G2 | G0 ยังเปิด; timer 24h เป็น dev baseline/durable feed ยังไม่ส่ง email; Model B UI ผ่าน P3 แล้ว ส่วน Model A UI เป็น P4 และ operations/staging เป็น P6–P8 |
 | P3 | Codex implementation; scoped API/UI review | [54 backend/browser tests + UI smoke + screenshots](p3/Execution_Report.md) | 2026-11-07 เฉพาะ development G3 | G0 ยังเปิด; real Google/SMTP/S3/HTTPS/physical camera และ UAT เป็น P8; Model A/default switch เป็น P4 |
 | P4 | — | — | — | — |
 | P5 | — | — | — | — |
