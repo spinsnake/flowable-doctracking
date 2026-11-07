@@ -49,10 +49,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,metrics
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,workflow
 flowable:
   database-schema: ${DATABASE_SCHEMA:public}
   database-schema-update: ${FLOWABLE_SCHEMA_UPDATE:false}
@@ -74,6 +79,8 @@ app:
   mail-enabled: ${MAIL_ENABLED:false}
   mail-worker-enabled: ${MAIL_WORKER_ENABLED:true}
   workflow-worker-enabled: ${WORKFLOW_WORKER_ENABLED:true}
+  reconciliation-enabled: ${RECONCILIATION_ENABLED:true}
+  reconciliation-poll-ms: ${RECONCILIATION_POLL_MS:60000}
   mail-from: ${SMTP_FROM:no-reply@example.invalid}
   it-contact: ${IT_CONTACT:ติดต่อผู้ดูแลระบบของหน่วยงาน}
   session-secure: ${SESSION_SECURE:true}
@@ -81,10 +88,15 @@ app:
   evidence:
     backend: ${EVIDENCE_BACKEND:local}
     root: ${EVIDENCE_ROOT:.local/evidence}
+    orphan-cleanup-enabled: ${ORPHAN_CLEANUP_ENABLED:false}
+    orphan-grace-seconds: ${ORPHAN_GRACE_SECONDS:0}
     bucket: ${S3_BUCKET:}
     endpoint: ${S3_ENDPOINT:}
     region: ${AWS_REGION:ap-southeast-1}
 logging:
+  structured:
+    format:
+      console: logstash
   level:
     org.springframework.web: INFO
     org.springframework.security: INFO

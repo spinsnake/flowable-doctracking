@@ -1,15 +1,16 @@
 openapi: 3.0.3
 info:
   title: MFU Document Tracking Application API
-  version: 0.6.0-p5-bulk
+  version: 0.7.0-p6
   description: |
     Application contract with P1 identity/registry, P2 workflow commands, P3 UI read models and
-    P4 default-policy/Model A observations and P5 partial-success bulk. Direct transfer/exception resolution remain P5 scope;
+    P4 default-policy/Model A observations, P5 partial-success bulk and P6 operations/reconciliation. Direct transfer/exception resolution remain P5 scope;
     their presence in this specification is not implementation evidence. See contracts/README.md for scope.
     Flowable is embedded and accessed internally through Java APIs; no engine REST endpoint is exposed here.
     Business decisions D01-D17 remain subject to the decision log and owner approval. Reservation TTL,
     direct-transfer evidence, retention and SLA values are not approved by this contract. D08 partial success was confirmed on 2026-11-07.
 
+    Responses carry validated UUID X-Correlation-ID; error correlation_id matches it. Logs omit raw URLs, query values and bodies.
     All authenticated requests recheck active user/unit, membership, station scope and session version.
     ADMIN means Central Admin. Coordinator is an explicitly granted operational capability, not an implicit role.
     Origin/Station are resource contexts, not client supplied roles. Deny by default; lists, details, timeline
@@ -1217,6 +1218,347 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         default: {$ref: '#/components/responses/Error'}
+  /admin/operations/summary:
+    get:
+      tags:
+      - Operations
+      operationId: getOperationsSummary
+      summary: Central Admin reads observed queue counts and failure alerts
+      parameters: []
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsSummary'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/workflow-deliveries:
+    get:
+      tags:
+      - Operations
+      operationId: listOperationsWorkflowDeliveries
+      summary: Central Admin reads technical workflow-deliveries
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          description: UUID except tasks use opaque task IDs.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: status
+        in: query
+        schema:
+          type: string
+          description: Validated queue status; default lists failures requiring attention.
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/login-notifications:
+    get:
+      tags:
+      - Operations
+      operationId: listOperationsLoginNotifications
+      summary: Central Admin reads technical login-notifications
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          description: UUID except tasks use opaque task IDs.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: status
+        in: query
+        schema:
+          type: string
+          description: Validated queue status; default lists failures requiring attention.
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/exceptions:
+    get:
+      tags:
+      - Operations
+      operationId: listOperationsExceptions
+      summary: Central Admin reads technical exceptions
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          description: UUID except tasks use opaque task IDs.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/audit-events:
+    get:
+      tags:
+      - Operations
+      operationId: listOperationsAuditEvents
+      summary: Central Admin reads technical audit-events
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          description: UUID except tasks use opaque task IDs.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/reminders:
+    get:
+      tags:
+      - Operations
+      operationId: listOperationsReminders
+      summary: Central Admin reads technical reminders
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          description: UUID except tasks use opaque task IDs.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/tasks:
+    get:
+      tags:
+      - Operations
+      operationId: listOperationsTasks
+      summary: Central Admin reads technical tasks
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          description: UUID except tasks use opaque task IDs.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/documents/{id}/engine:
+    get:
+      tags:
+      - Operations
+      operationId: getOperationsEngineBinding
+      summary: Central Admin reads pinned process and exact task/step bindings
+      parameters: []
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsEngine'
+        default:
+          $ref: '#/components/responses/Error'
+    parameters:
+    - $ref: '#/components/parameters/Id'
+  /admin/operations/reconciliation/findings:
+    get:
+      tags:
+      - Operations
+      operationId: listReconciliationFindings
+      summary: Central Admin reads persisted diagnostic findings
+      parameters:
+      - name: state
+        in: query
+        schema:
+          type: string
+          enum:
+          - OPEN
+          - RESOLVED
+          default: OPEN
+      - name: document_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReconciliationFinding'
+        default:
+          $ref: '#/components/responses/Error'
+  /admin/operations/reconciliation/scan:
+    post:
+      tags:
+      - Operations
+      operationId: scanWorkflowReconciliation
+      summary: Central Admin audits bounded ledger/projection/engine comparison without
+        business advancement
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconciliationScan'
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scanned:
+                    type: integer
+                    minimum: 0
+                  pending:
+                    type: integer
+                    minimum: 0
+                  mismatches:
+                    type: integer
+                    minimum: 0
+                  limit:
+                    type: integer
+                    minimum: 0
+        default:
+          $ref: '#/components/responses/Error'
+      description: Writes diagnostics and audit only. Never creates receipts, Check
+        events, custody corrections or automatic task advancement. Pending outbox defers
+        engine comparison but canonical ledger/projection checks still run. CSRF, idempotency
+        and nonblank reason required.
+  /admin/operations/orphan-uploads/cleanup:
+    post:
+      tags:
+      - Operations
+      operationId: cleanupOrphanUploads
+      summary: Central Admin audits preview or approved cleanup of staged unlinked uploads
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+              required:
+              - dry_run
+              - limit
+              - reason
+              additionalProperties: false
+      responses:
+        '200':
+          description: Redacted technical result.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/Error'
+      description: Disabled by default; positive approved grace period required. Never
+        deletes finalized/linked evidence. Batch metadata, command receipt and audit
+        share a transaction with per-upload savepoints. External exact-key deletion
+        is idempotent; DB rollback retains metadata for retry. No evidence/document/audit
+        retention policy is inferred.
 components:
   securitySchemes:
     sessionCookie:
@@ -1667,3 +2009,145 @@ components:
         next_retry_at: {type: string, format: date-time, nullable: true}
         last_error_code: {type: string, nullable: true, description: Sanitized error code only; never provider credentials/raw responses.}
         version: {type: integer, format: int64, minimum: 0}
+
+    OperationsSummary:
+      type: object
+      properties:
+        workflow:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        mail:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        open_exceptions:
+          type: integer
+          minimum: 0
+        waiting_tasks:
+          type: integer
+          minimum: 0
+        oldest_waiting_age_seconds:
+          type: integer
+          minimum: 0
+        reconciliation_open:
+          type: integer
+          minimum: 0
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                enum:
+                - WORKFLOW_DEAD_LETTER
+                - MAIL_DELIVERY_FAILED
+                - RECONCILIATION_MISMATCH
+              count:
+                type: integer
+                minimum: 0
+    OperationsPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            description: Category-specific technical IDs, safe codes, states, times and
+              attempts; excludes document titles, recipients, evidence keys and audit
+              reasons.
+        next_cursor:
+          type: string
+          nullable: true
+    OperationsEngine:
+      type: object
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        business_state:
+          $ref: '#/components/schemas/BusinessState'
+        process_sync_status:
+          $ref: '#/components/schemas/ProcessSyncStatus'
+        current_route_step_id:
+          type: string
+          format: uuid
+        pending_receipt_step_id:
+          type: string
+          format: uuid
+          nullable: true
+        mapping:
+          type: object
+          nullable: true
+          properties:
+            process_instance_id:
+              type: string
+            process_definition_id:
+              type: string
+            process_definition_version:
+              type: integer
+              minimum: 0
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              task_key:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+              binding:
+                type: object
+                additionalProperties:
+                  type: string
+                  format: uuid
+    ReconciliationFinding:
+      type: object
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        state:
+          type: string
+          enum:
+          - OPEN
+          - RESOLVED
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        sightings:
+          type: integer
+          minimum: 0
+    ReconciliationScan:
+      type: object
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+      required:
+      - reason
+      additionalProperties: false

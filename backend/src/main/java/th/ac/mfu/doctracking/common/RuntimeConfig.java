@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -16,6 +17,16 @@ import org.springframework.core.env.Profiles;
 
 @Configuration
 public class RuntimeConfig {
+    @Bean
+    static BeanFactoryPostProcessor controlledEngineSchema(Environment env) {
+        // Run before Flowable creates its engine, not after an automatic upgrade could have run.
+        return factory -> {
+            if (env.acceptsProfiles(Profiles.of("prod"))
+                    && !"false".equalsIgnoreCase(env.getProperty("flowable.database-schema-update", "false"))) {
+                throw new IllegalStateException("Production engine schema upgrades require a separate controlled migration");
+            }
+        };
+    }
     @Bean
     ObjectMapper persistenceJson() {
         return JsonMapper.builder().addModule(new JavaTimeModule())

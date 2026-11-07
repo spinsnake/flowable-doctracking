@@ -1,7 +1,6 @@
 package th.ac.mfu.doctracking.common;
 
 import java.util.Map;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +38,7 @@ public class ApiErrors {
             int status=httpError.getStatusCode().value();
             if(status>=400 && status<500) return response(status,"HTTP_ERROR","คำขอหรือเส้นทางไม่ถูกต้อง");
         }
-        String correlation = UUID.randomUUID().toString();
+        String correlation = CorrelationFilter.current();
         // Do not log raw request, token, SQL parameters or provider errors.
         LOG.error("request_failed correlation_id={} exception={}", correlation, error.getClass().getSimpleName());
         return ResponseEntity.internalServerError().body(Map.of("code", "INTERNAL_ERROR",
@@ -53,6 +52,6 @@ public class ApiErrors {
 
     private ResponseEntity<?> response(int status, String code, String message) {
         return ResponseEntity.status(status).body(Map.of("code", code, "message", message,
-                "correlation_id", UUID.randomUUID().toString()));
+                "correlation_id", CorrelationFilter.current()));
     }
 }

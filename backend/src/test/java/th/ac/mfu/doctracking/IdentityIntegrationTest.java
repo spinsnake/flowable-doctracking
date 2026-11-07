@@ -135,4 +135,34 @@ class IdentityIntegrationTest extends DatabaseTest {
         assertThat(worker.deliverOne()).isTrue();assertThat(db.queryForObject("select status from notification_outbox where id=?",String.class,job)).isEqualTo("ACCEPTED_BY_PROVIDER");assertThat(db.queryForObject("select status from notification_delivery_attempts where notification_id=? and attempt=1",String.class,job)).isEqualTo("LEASE_EXPIRED");
         Cookie staff=memberCookie(member(unit(),"STAFF"));http.perform(get("/api/v1/admin/login-notifications").cookie(staff)).andExpect(status().isForbidden());
     }
+    @Test void staleMailWorkerCannotAcknowledgeLeaseReclaimedByAnotherWorker()throws Exception {
+        UUID job=db.queryForObject("select id from notification_outbox where recipient=?",UUID.class,adminEmail),newToken=UUID.randomUUID();
+        db.update("update notification_outbox set next_retry_at=now()+interval '1 day' where status in ('PENDING','RETRY_WAIT') and id<>?",job);
+        doAnswer(call->{
+            db.update("update notification_delivery_attempts set status='LEASE_EXPIRED',error_code='ACK_UNCERTAIN',finished_at=now() where notification_id=? and attempt=1",job);
+            db.update("update notification_outbox set lease_token=?,lease_until=now()+interval '2 minutes',attempt_count=2,version=version+1 where id=?",newToken,job);
+            db.update("insert into notification_delivery_attempts(notification_id,attempt,status) values (?,2,'PROCESSING')",job);return null;
+        }).when(mail).send(any(MimeMessage.class));
+        assertThat(worker.deliverOne()).isTrue();
+        assertThat(db.queryForMap("select status,lease_token,attempt_count from notification_outbox where id=?",job)).containsEntry("status","PROCESSING").containsEntry("lease_token",newToken).containsEntry("attempt_count",2);
+        assertThat(db.queryForObject("select status from notification_delivery_attempts where notification_id=? and attempt=1",String.class,job)).isEqualTo("LEASE_EXPIRED");
+        db.update("update notification_outbox set lease_until=now()-interval '1 second' where id=?",job);doNothing().when(mail).send(any(MimeMessage.class));
+        assertThat(worker.deliverOne()).isTrue();assertThat(db.queryForObject("select status from notification_outbox where id=?",String.class,job)).isEqualTo("ACCEPTED_BY_PROVIDER");
+        assertThat(db.queryForObject("select status from notification_delivery_attempts where notification_id=? and attempt=2",String.class,job)).isEqualTo("LEASE_EXPIRED");
+    }
+    @Test void persistentSmtpFailureStopsAfterFiveAttemptsAndKeepsProviderDetailsPrivate()throws Exception {
+        UUID job=db.queryForObject("select id from notification_outbox where recipient=?",UUID.class,adminEmail);
+        db.update("update notification_outbox set next_retry_at=now()+interval '1 day' where status in ('PENDING','RETRY_WAIT') and id<>?",job);
+        // Other tests may leave expired claims; exclude them from this deterministic queue assertion.
+        db.update("update notification_outbox set lease_until=now()+interval '1 day' where status='PROCESSING' and id<>?",job);
+        doThrow(new MailSendException("private SMTP credential/server response")).when(mail).send(any(MimeMessage.class));
+        for(int attempt=1;attempt<=5;attempt++) {
+            assertThat(worker.deliverOne()).isTrue();var state=db.queryForMap("select status,attempt_count,last_error_code,next_retry_at from notification_outbox where id=?",job);
+            assertThat(state).containsEntry("status",attempt==5?"FAILED":"RETRY_WAIT").containsEntry("attempt_count",attempt).containsEntry("last_error_code","SMTP_SEND_FAILED");
+            assertThat(state.get("next_retry_at")).isNotNull();db.update("update notification_outbox set next_retry_at=now()-interval '1 second' where id=?",job);
+        }
+        assertThat(worker.deliverOne()).isFalse();assertThat(db.queryForObject("select count(*) from notification_delivery_attempts where notification_id=?",Long.class,job)).isEqualTo(5);
+        http.perform(get("/api/v1/auth/me").cookie(cookie)).andExpect(status().isOk());
+        assertThat(db.queryForList("select status,error_code from notification_delivery_attempts where notification_id=?",job).toString()).doesNotContain("credential","response");
+    }
 }

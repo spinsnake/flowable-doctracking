@@ -1,8 +1,16 @@
-name: P1 checks
+name: Development checks
 on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  operations-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -B -m unittest discover -s scripts -p test_operations.py -v
   backend:
     runs-on: ubuntu-latest
     services:

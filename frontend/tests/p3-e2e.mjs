@@ -1,6 +1,7 @@
 // Opt-in browser test against actual Spring HTTP + PostgreSQL + Flowable. No route interception or API mocks.
 // Launched by P3BrowserIntegrationTest after generating fixture users/templates and a signed test-only OIDC provider.
 import { createRequire } from 'node:module'
+import { execFile } from 'node:child_process'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { createServer, request as proxyRequest } from 'node:http'
@@ -13,8 +14,8 @@ const output=dirname(process.argv[2]), publicRoot=fileURLToPath(new URL('../.out
 const base='http://127.0.0.1:62916', checks=[], failures=[], contexts=[]
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.woff2':'font/woff2','.png':'image/png','.ico':'image/x-icon'}
 const gateway=createServer(async(req,res)=>{
-  if(req.url.startsWith('/api/')){
-    const upstream=proxyRequest({hostname:'127.0.0.1',port:fixture.backendPort,path:req.url,method:req.method,headers:req.headers},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res)})
+  if(req.url.startsWith('/api/')||req.url==='/healthz'){
+    const upstream=proxyRequest({hostname:'127.0.0.1',port:fixture.backendPort,path:req.url==='/healthz'?'/actuator/health/readiness':req.url,method:req.method,headers:req.headers},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res)})
     upstream.on('error',()=>{res.writeHead(502);res.end('Backend unavailable')});req.pipe(upstream);return
   }
   try{
@@ -254,6 +255,28 @@ try{
     checks.push('P5:8 actual pickups with one shared photo,8 same-destination dropoffs,8 explicit unit receipts; all real Flowable ACKs')
     checks.push('P5: additional unfinished photo blocks command until explicitly removed; batch review exposes all selected document IDs/count')
     documentId=mainDocumentId
+  }
+  if(fixture.p6){
+    await new Promise((ok,bad)=>execFile(process.env.PYTHON_BIN||'python',['scripts/operations.py','smoke','--origin',base,'--allow-http-localhost'],{timeout:60000},(error,stdout,stderr)=>error?bad(new Error(stderr||error.message)):ok(stdout)))
+    checks.push('P6: anonymous loopback smoke validates real readiness, CSRF and absent session without triggering login/email')
+    const admin=await login('admin'),mainDocument=documentId
+    assert.equal((await outsider.context.request.get(base+'/api/v1/admin/operations/summary')).status(),403)
+    assert.equal((await admin.context.request.get(base+`/api/v1/documents/${mainDocument}`)).status(),404)
+    await admin.page.goto(base+'/admin/operations');await admin.page.getByRole('heading',{name:'ติดตามและกู้คืนระบบ',exact:true}).waitFor()
+    await admin.page.getByTestId('ops-retry-'+fixture.failed_delivery).click();await admin.page.getByTestId('ops-retry-reason').fill('P6 actual browser retry original canonical delivery')
+    const retried=admin.page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/retry'))
+    await admin.page.getByTestId('ops-retry-submit').click();assert.equal((await retried).status(),202)
+    documentId=fixture.failed_document;await state(origin,'WAIT_ORIGIN_READY')
+    await admin.page.getByTestId('ops-scan-open').click();await admin.page.locator('#ops-scan-document').fill(fixture.mismatched_document);await admin.page.getByTestId('ops-scan-reason').fill('P6 browser detect exact task-local mismatch without automatic correction')
+    const scanned=admin.page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/reconciliation/scan'))
+    await admin.page.getByTestId('ops-scan-submit').click();const scanResponse=await scanned;assert.equal(scanResponse.status(),200);assert.equal((await scanResponse.json()).mismatches,1)
+    await admin.page.getByTestId('ops-tab-reconciliation').click();await admin.page.getByText(/TASK_BINDING_MISMATCH|TASK_STEP_MISMATCH|TASK_CORRELATION_MISMATCH/).first().waitFor()
+    await admin.page.getByRole('button',{name:'ตรวจขั้นตอน',exact:true}).first().click();await admin.page.getByTestId('ops-engine').waitFor()
+    await screenshot(admin.page,'operations-desktop');await admin.page.setViewportSize({width:390,height:844});await screenshot(admin.page,'operations-mobile')
+    checks.push('P6: CentralAdmin UI retries original failed delivery with reason; canonical event opens one real process and audit; no business re-registration')
+    checks.push('P6: read-only reconciliation detects exact task-local mismatch, preserves task/document version, displays scoped findings and technical bindings')
+    checks.push('P6: admin technical access does not grant document detail; unrelated user operations denied; desktop/mobile no overflow')
+    documentId=mainDocument
   }
   const timeline=await get(origin.context,`/documents/${documentId}/timeline`)
   assert.equal(timeline.items.filter(e=>e.event_type==='ORIGIN_RETURN_CONFIRMED').length,1)

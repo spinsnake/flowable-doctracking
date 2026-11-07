@@ -35,6 +35,7 @@ public abstract class DatabaseTest {
         registry.add("flowable.async-executor-activate", () -> "false");
         registry.add("app.mail-worker-enabled", () -> "false");
         registry.add("app.workflow-worker-enabled", () -> "false");
+        registry.add("app.reconciliation-enabled", () -> "false");
         registry.add("app.session-secure", () -> "false");
         registry.add("app.evidence.root", () -> ".local/test-evidence");
     }

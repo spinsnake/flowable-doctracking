@@ -48,6 +48,7 @@ class P3BrowserIntegrationTest extends DatabaseTest {
     @Autowired RegistryService registry;
     @Autowired CommandService commands;
     @Autowired WorkflowOutboxWorker worker;
+    @Autowired org.flowable.engine.TaskService tasks;
     @Autowired ObjectMapper json;
     @LocalServerPort int port;
 
@@ -69,6 +70,7 @@ class P3BrowserIntegrationTest extends DatabaseTest {
     @Test void modelBTraversesThreeStationsThroughRealBrowserAndOriginAloneCompletes() throws Exception {
         boolean p4="true".equals(System.getenv("P4_BROWSER_ENABLED"));
         boolean p5="true".equals(System.getenv("P5_BROWSER_ENABLED"));
+        boolean p6="true".equals(System.getenv("P6_BROWSER_ENABLED"));
         var stations=new ArrayList<UUID>();var units=new ArrayList<UUID>();var users=new ArrayList<UUID>();
         String run=UUID.randomUUID().toString().substring(0,8);
         for(int i=0;i<3;i++) {
@@ -76,7 +78,7 @@ class P3BrowserIntegrationTest extends DatabaseTest {
             db.update("insert into units(id,code,name,is_active) values(?,?,?,true)",unit,"P3-"+run+"-"+i,"P3 Unit "+(char)('A'+i));
             db.update("insert into stations(id,unit_id,code,name) values(?,?,?,?)",station,unit,"P3-S-"+run+"-"+i,"P3 Station "+(char)('A'+i));
         }
-        String[] roles=p4?new String[]{"origin","staff-b","staff-c","courier-1","courier-2","courier-3","outsider","admin"}:new String[]{"origin","staff-b","staff-c","courier-1","courier-2","courier-3","outsider"};
+        String[] roles=(p4||p6)?new String[]{"origin","staff-b","staff-c","courier-1","courier-2","courier-3","outsider","admin"}:new String[]{"origin","staff-b","staff-c","courier-1","courier-2","courier-3","outsider"};
         var emails=new LinkedHashMap<String,String>();
         for(int i=0;i<roles.length;i++) {
             UUID user=UUID.randomUUID();users.add(user);String email=roles[i]+"-"+run+"@mfu.ac.th";emails.put(roles[i],email);EMAILS.add(email);
@@ -104,9 +106,32 @@ class P3BrowserIntegrationTest extends DatabaseTest {
         if(!Files.isDirectory(root.resolve("frontend")))root=root.getParent();
         assertTrue(Files.isRegularFile(root.resolve("frontend/.output/public/index.html")),
                 "Build frontend first; the static SPA entrypoint must exist");
-        Path output=root.resolve(p5?"frontend/test-results/p5-bulk":p4?"frontend/test-results/p4":"frontend/test-results/p3");Files.createDirectories(output);
+        Path output=root.resolve(p6?"frontend/test-results/p6":p5?"frontend/test-results/p5-bulk":p4?"frontend/test-results/p4":"frontend/test-results/p3");Files.createDirectories(output);
         Path fixtures=output.resolve("fixtures.json");
-        json.writeValue(fixtures.toFile(),Map.of("emails",emails,"stations",stations,"template",templateId,"backendPort",port,"run",run,"p4",p4,"p5",p5));
+        var browserFixture=new LinkedHashMap<String,Object>(Map.of("emails",emails,"stations",stations,"template",templateId,"backendPort",port,"run",run,"p4",p4,"p5",p5,"p6",p6));
+        UUID failedDocument=null,mismatchedDocument=null,failedOperation=null;String mismatchTask=null;
+        if(p6) {
+            for(int i=0;i<2;i++) {
+                var input=new RegistryService.Registration("P6 operational fixture "+i+" "+run,null,stations.getFirst(),UUID.fromString(templateId),1);
+                var result=commands.execute(origin,"document:register",UUID.randomUUID().toString(),input,()->registry.register(origin,input));
+                var body=(Map<?,?>)result.body();UUID document=UUID.fromString(((List<?>)body.get("document_ids")).getFirst().toString());
+                if(i==0) {
+                    failedDocument=document;failedOperation=UUID.fromString(body.get("operation_id").toString());
+                    db.update("update workflow_outbox set payload='[]'::jsonb where document_id=?",document);
+                    worker.processDocument(document);
+                    assertEquals("DEAD_LETTER",db.queryForObject("select status from workflow_outbox where document_id=?",String.class,document));
+                    // Repair only the transport envelope from the immutable ledger, retaining the failed delivery for UI retry.
+                    db.update("update workflow_outbox o set payload=e.payload from document_events e where e.id=o.event_id and o.document_id=?",document);
+                    browserFixture.put("failed_document",document);browserFixture.put("failed_delivery",db.queryForObject("select id from workflow_outbox where document_id=?",UUID.class,document));
+                } else {
+                    mismatchedDocument=document;worker.processDocument(document);
+                    mismatchTask=db.queryForObject("select t.id_ from act_ru_task t join workflow_instances w on w.process_instance_id=t.proc_inst_id_ where w.document_id=?",String.class,document);
+                    tasks.setVariableLocal(mismatchTask,"routeStepId",UUID.randomUUID().toString());
+                    browserFixture.put("mismatched_document",document);
+                }
+            }
+        }
+        json.writeValue(fixtures.toFile(),browserFixture);
         var scheduler=Executors.newSingleThreadScheduledExecutor();
         // The same production outbox worker applies committed events asynchronously; no APPLIED or ready state is seeded.
         scheduler.scheduleWithFixedDelay(()->{try{for(int i=0;i<25&&worker.processOne();i++){} }catch(Exception e){throw new IllegalStateException(e);}},0,100,TimeUnit.MILLISECONDS);
@@ -155,6 +180,14 @@ class P3BrowserIntegrationTest extends DatabaseTest {
                     assertEquals(2,db.queryForObject("select count(*) from event_evidence x join document_events e on e.id=x.event_id where e.document_id=?",Integer.class,bulkDocument));
                     assertEquals(1,db.queryForObject("select count(*) from document_events where document_id=? and event_type='UNIT_RECEIPT_CONFIRMED'",Integer.class,bulkDocument));
                 }
+            }
+            if(p6) {
+                assertEquals("APPLIED",db.queryForObject("select process_sync_status from documents where id=?",String.class,failedDocument));
+                assertEquals(1,db.queryForObject("select count(*) from audit_events where action='WORKFLOW_RETRY' and resource_id=?",Integer.class,failedOperation));
+                assertEquals(1,db.queryForObject("select count(*) from workflow_instances where document_id=?",Integer.class,failedDocument));
+                assertEquals(0L,db.queryForObject("select version from documents where id=?",Long.class,mismatchedDocument));
+                assertEquals(mismatchTask,db.queryForObject("select t.id_ from act_ru_task t join workflow_instances w on w.process_instance_id=t.proc_inst_id_ where w.document_id=?",String.class,mismatchedDocument));
+                assertTrue(db.queryForObject("select count(*) from workflow_reconciliation_findings where document_id=? and state='OPEN'",Integer.class,mismatchedDocument)>0);
             }
             for(UUID user:users) {
                 assertEquals(1,db.queryForObject("select count(*) from auth_events where user_id=? and event_type='LOGIN_SUCCEEDED'",Integer.class,user));

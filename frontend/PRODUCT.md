@@ -6,3 +6,5 @@ Confirmed requirements: Thai UI, Google-only login using allowlisted @mfu.ac.th 
 
 ## Platform
 Web: Nuxt 4 SPA, Vue 3, TypeScript, Nuxt UI 4, Tailwind 4. Same-origin /api/v1 backend; no browser OAuth tokens or application passwords. Mobile web remains the same product and visual system.
+
+P6 adds a Central Admin operations view with redacted queue counts, failures, reminders, audit references and pinned engine/task bindings. Retrying selects the original failed delivery with an audited reason. Reconciliation writes diagnostic findings without advancing business state. Observed ages are not SLA deadlines; failure alerts are in-app data, not a claim of external notification delivery. Orphan preview requires an explicitly approved grace policy; finalized/linked evidence is excluded.

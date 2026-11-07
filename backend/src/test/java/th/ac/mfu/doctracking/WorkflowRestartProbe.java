@@ -20,11 +20,16 @@ public class WorkflowRestartProbe {
                     and not exists(select 1 from workflow_instances w where w.document_id=d.id)
                     and not exists(select 1 from act_ru_execution x where x.business_key_=d.id::text)
                     and (select count(*) from workflow_outbox o where o.document_id=d.id)=1
-                    and exists(select 1 from workflow_outbox o where o.document_id=d.id and o.action='DOCUMENT_REGISTERED' and o.status='PENDING')
+                    and exists(select 1 from workflow_outbox o join document_events e on e.id=o.event_id
+                      where o.document_id=d.id and o.action='DOCUMENT_REGISTERED' and o.status='PENDING'
+                      and jsonb_typeof(o.payload)='object' and o.payload=e.payload)
                     order by d.created_at desc limit 1
                     """)) {
                     if(!rows.next())throw new AssertionError("No pending registration fixture");
                     state.setProperty("document_id",rows.getString(1));
+                }
+                try(var q=db.prepareStatement("update workflow_outbox set available_at=now() where document_id=?::uuid and status='PENDING'")) {
+                    q.setString(1,state.getProperty("document_id"));q.executeUpdate();
                 }
                 // Quiesce unrelated test fixtures; do not forge any ACK or alter the target registration.
                 try(var q=db.prepareStatement("update workflow_outbox set available_at=now()+interval '10 years' where document_id<>?::uuid and status<>'APPLIED'")) {

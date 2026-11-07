@@ -55,3 +55,12 @@ P3 browser integration เป็น opt-in: build frontend ให้มี `.out
 Base Compose ใช้ `prod` และปฏิเสธการเริ่มงานหาก policy/Google/MFU admin/HTTPS/secure session/SMTP TLS/private S3 ยังไม่ครบ ต้อง provision Flowable-owned schema ด้วย release procedure ก่อนรัน `FLOWABLE_SCHEMA_UPDATE=false`; application schema ใช้ Flyway แยกต่างหาก ห้ามใช้ dev schema update เป็น production migration strategy
 
 วาง HTTPS reverse proxyหน้า frontend และตั้ง APP_URL เป็น public HTTPS origin Cookie ใช้ origin นี้โดยไม่เชื่อ forwarded headers จากผู้ใช้ ต้องทดสอบ Google, SMTP MFU inbox, private S3 permissions และ backup บน staging จริงตาม P8; Compose validation หรือ local tests ไม่ใช่ผล staging verification
+
+
+## Operations / recovery (P6)
+
+Central Admin ใช้ `/admin/operations` เพื่อติดตาม workflow/mail failures, exceptions, audit, reminders และ task bindings; retry งานเดิมพร้อมเหตุผล และตรวจเทียบ ledger/projection กับ Flowable โดยไม่แก้สถานะธุรกิจอัตโนมัติ รายละเอียดอยู่ใน [P6 report](document/p6/Execution_Report.md), [deployment](document/p6/Deployment_Runbook.md), [backup/restore](document/p6/Backup_Restore_Runbook.md) และ [rollback](document/p6/Rollback_Runbook.md)
+
+`/actuator/health/readiness` ตรวจ DB และ workflow; `/actuator/health/liveness` ตรวจ process availability โดยไม่เผยรายละเอียด Nginx ใช้ `/healthz` สำหรับ readiness ส่วน metrics ต้องเป็น Central Admin `RECONCILIATION_ENABLED` เปิด diagnostic job แบบ bounded; `ORPHAN_CLEANUP_ENABLED=false` และ `ORPHAN_GRACE_SECONDS=0` คงปิด cleanup จนมีนโยบายอายุที่อนุมัติไว้ การส่งตรง/resolve business exception ยังค้าง P5 ไม่ได้เปิดด้วย reconciliation
+
+เครื่องมือ `python scripts/operations.py --help` ใช้ stdlib สำหรับ immutable image override, anonymous smoke, checksum backup bundle และ isolated restore ค่า retention/RPO/RTO/โหลด production ไม่ถูกตั้งขึ้นเอง ผล Compose validation และ local tests ไม่ใช่การ deploy/restore staging จริง

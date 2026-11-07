@@ -7,6 +7,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import th.ac.mfu.doctracking.common.ApiException;
 
@@ -36,11 +37,13 @@ public class PrivatePhotoStorage {
     }
     private Path path(String key) {
         // Storage keys are generated UUIDs, never user filenames or URLs.
-        UUID.fromString(key);Path value=root.resolve(key).normalize();
+        if(!UUID.fromString(key).toString().equals(key)) throw new IllegalArgumentException("Invalid storage key");
+        Path value=root.resolve(key).normalize();
         if(!value.startsWith(root)) throw new IllegalArgumentException("Invalid storage key");return value;
     }
     public void put(String key,byte[] bytes,String contentType) {
         try {
+            path(key);
             if(s3!=null) s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(),RequestBody.fromBytes(bytes));
             else {
                 Path destination=path(key);Files.createDirectories(root);
@@ -52,8 +55,17 @@ public class PrivatePhotoStorage {
     }
     public byte[] get(String key) {
         try {
+            path(key);
             if(s3!=null) return s3.getObjectAsBytes(GetObjectRequest.builder().bucket(bucket).key(key).build()).asByteArray();
             return Files.readAllBytes(path(key));
+        } catch(IOException | RuntimeException e) { throw new ApiException(503,"EVIDENCE_STORAGE_UNAVAILABLE","Photo storage unavailable"); }
+    }
+    /** Idempotent, exact-key deletion; callers must hold the upload row lock. */
+    public void delete(String key) {
+        try {
+            path(key); // Validate generated UUID keys for both backends, including S3.
+            if(s3!=null) s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+            else Files.deleteIfExists(path(key));
         } catch(IOException | RuntimeException e) { throw new ApiException(503,"EVIDENCE_STORAGE_UNAVAILABLE","Photo storage unavailable"); }
     }
     @PreDestroy public void close() { if(s3!=null) s3.close(); }
